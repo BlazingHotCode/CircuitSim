@@ -1,0 +1,492 @@
+package circuitsim.physics;
+
+import circuitsim.components.Battery;
+import circuitsim.components.CircuitComponent;
+import circuitsim.components.ConnectionPoint;
+import circuitsim.components.WireNode;
+import circuitsim.ui.Grid;
+import java.awt.Point;
+import circuitsim.components.Resistor;
+import circuitsim.components.Wire;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public final class CircuitPhysics {
+    private static final double WIRE_RESISTANCE = 1e-9;
+    private static final double MIN_RESISTANCE = 1e-9;
+    private static final double SHORT_THRESHOLD = 1e-6;
+
+    private CircuitPhysics() {
+    }
+
+    public static boolean update(List<CircuitComponent> components, Collection<Wire> wires) {
+        if (components == null || wires == null) {
+            return false;
+        }
+        Map<Point, Integer> nodeIndex = new HashMap<>();
+        for (CircuitComponent component : components) {
+            for (ConnectionPoint point : component.getConnectionPoints()) {
+                int x = Grid.snap(point.getX());
+                int y = Grid.snap(point.getY());
+                getNodeIndex(nodeIndex, x, y);
+            }
+        }
+        for (Wire wire : wires) {
+            WireNode start = wire.getStart();
+            WireNode end = wire.getEnd();
+            if (start == null || end == null) {
+                continue;
+            }
+            getNodeIndex(nodeIndex, Grid.snap(start.getX()), Grid.snap(start.getY()));
+            getNodeIndex(nodeIndex, Grid.snap(end.getX()), Grid.snap(end.getY()));
+        }
+        if (nodeIndex.isEmpty()) {
+            return false;
+        }
+
+        List<Edge> edges = new ArrayList<>();
+        List<Battery> batteries = new ArrayList<>();
+        int nodeCount = nodeIndex.size();
+        for (CircuitComponent component : components) {
+            if (component instanceof Resistor) {
+                Resistor resistor = (Resistor) component;
+                List<ConnectionPoint> points = resistor.getConnectionPoints();
+                if (points.size() < 2) {
+                    continue;
+                }
+                int aIndex = getNodeIndex(nodeIndex, Grid.snap(points.get(0).getX()),
+                        Grid.snap(points.get(0).getY()));
+                int bIndex = getNodeIndex(nodeIndex, Grid.snap(points.get(1).getX()),
+                        Grid.snap(points.get(1).getY()));
+                edges.add(new Edge(aIndex, bIndex,
+                        Math.max(MIN_RESISTANCE, resistor.getResistance()), resistor));
+            } else if (component instanceof Battery) {
+                Battery battery = (Battery) component;
+                batteries.add(battery);
+            }
+        }
+        for (Wire wire : wires) {
+            if (wire.getStart() == null || wire.getEnd() == null) {
+                continue;
+            }
+            int aIndex = getNodeIndex(nodeIndex, Grid.snap(wire.getStart().getX()),
+                    Grid.snap(wire.getStart().getY()));
+            int bIndex = getNodeIndex(nodeIndex, Grid.snap(wire.getEnd().getX()),
+                    Grid.snap(wire.getEnd().getY()));
+            edges.add(new Edge(aIndex, bIndex,
+                    WIRE_RESISTANCE, wire));
+        }
+        for (Battery battery : batteries) {
+            ConnectionPoint neg = battery.getNegativePoint();
+            ConnectionPoint pos = battery.getPositivePoint();
+            if (neg == null || pos == null) {
+                continue;
+            }
+            int negIndex = getNodeIndex(nodeIndex, Grid.snap(neg.getX()), Grid.snap(neg.getY()));
+            int posIndex = getNodeIndex(nodeIndex, Grid.snap(pos.getX()), Grid.snap(pos.getY()));
+            int internalNode = nodeCount++;
+            double resistance = Math.max(MIN_RESISTANCE, battery.getInternalResistance());
+            edges.add(new Edge(negIndex, internalNode, resistance));
+            battery.setInternalNodeIndex(internalNode);
+            battery.setPositiveNodeIndex(posIndex);
+        }
+        if (batteries.isEmpty()) {
+            resetComputedValues(edges);
+            return false;
+        }
+
+        Battery primaryBattery = batteries.get(0);
+        ConnectionPoint negative = primaryBattery.getNegativePoint();
+        ConnectionPoint positive = primaryBattery.getPositivePoint();
+        if (negative == null || positive == null) {
+            resetComputedValues(edges);
+            return false;
+        }
+
+        int groundIndex = getNodeIndex(nodeIndex, Grid.snap(negative.getX()), Grid.snap(negative.getY()));
+        if (groundIndex < 0) {
+            resetComputedValues(edges);
+            return false;
+        }
+
+        int positiveIndex = getNodeIndex(nodeIndex, Grid.snap(positive.getX()), Grid.snap(positive.getY()));
+        GraphView pruned = pruneToConnected(nodeCount, edges, batteries, groundIndex, positiveIndex);
+        if (pruned.edges.isEmpty()) {
+            resetComputedValues(edges);
+            resetUnusedValues(edges, wires, pruned);
+            return false;
+        }
+
+        boolean shortCircuit = detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
+                pruned.edges);
+        if (shortCircuit) {
+            resetComputedValues(pruned.edges);
+            resetUnusedValues(edges, wires, pruned);
+            return true;
+        }
+
+        double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
+                pruned.groundIndex);
+        if (nodeVoltages == null) {
+            resetComputedValues(pruned.edges);
+            resetUnusedValues(edges, wires, pruned);
+            return false;
+        }
+
+        for (Edge edge : pruned.edges) {
+            int a = edge.aIndex;
+            int b = edge.bIndex;
+            double va = nodeVoltages[a];
+            double vb = nodeVoltages[b];
+            double voltage = va - vb;
+            double current = voltage / edge.resistance;
+            if (edge.wire != null) {
+                edge.wire.setComputedVoltage((float) Math.abs(voltage));
+                edge.wire.setComputedAmpere((float) Math.abs(current));
+            }
+            if (edge.resistor != null) {
+                edge.resistor.setComputedVoltage((float) Math.abs(voltage));
+                edge.resistor.setComputedAmpere((float) Math.abs(current));
+            }
+        }
+        resetUnusedValues(edges, wires, pruned);
+        return false;
+    }
+
+    private static void resetComputedValues(List<Edge> edges) {
+        for (Edge edge : edges) {
+            if (edge.wire != null) {
+                edge.wire.setComputedVoltage(0f);
+                edge.wire.setComputedAmpere(0f);
+            }
+            if (edge.resistor != null) {
+                edge.resistor.setComputedVoltage(0f);
+                edge.resistor.setComputedAmpere(0f);
+            }
+        }
+    }
+
+    private static void resetUnusedValues(List<Edge> allEdges, Collection<Wire> wires, GraphView pruned) {
+        for (Wire wire : wires) {
+            if (!pruned.wires.contains(wire)) {
+                wire.setComputedVoltage(0f);
+                wire.setComputedAmpere(0f);
+            }
+        }
+        for (Edge edge : allEdges) {
+            if (edge.resistor != null && !pruned.resistors.contains(edge.resistor)) {
+                edge.resistor.setComputedVoltage(0f);
+                edge.resistor.setComputedAmpere(0f);
+            }
+        }
+    }
+
+    private static boolean detectShortCircuit(int start, int goal, int nodeCount, List<Edge> edges) {
+        double[] dist = new double[nodeCount];
+        boolean[] visited = new boolean[nodeCount];
+        for (int i = 0; i < nodeCount; i++) {
+            dist[i] = Double.POSITIVE_INFINITY;
+        }
+        dist[start] = 0;
+        for (int i = 0; i < nodeCount; i++) {
+            int current = -1;
+            double best = Double.POSITIVE_INFINITY;
+            for (int j = 0; j < nodeCount; j++) {
+                if (!visited[j] && dist[j] < best) {
+                    best = dist[j];
+                    current = j;
+                }
+            }
+            if (current == -1) {
+                break;
+            }
+            if (current == goal) {
+                break;
+            }
+            visited[current] = true;
+            for (Edge edge : edges) {
+                int a = edge.aIndex;
+                int b = edge.bIndex;
+                if (a != current && b != current) {
+                    continue;
+                }
+                int next = a == current ? b : a;
+                double alt = dist[current] + edge.resistance;
+                if (alt < dist[next]) {
+                    dist[next] = alt;
+                }
+            }
+        }
+        return dist[goal] <= SHORT_THRESHOLD;
+    }
+
+    private static double[] solveNodeVoltages(int nodeCount, List<Edge> edges,
+            List<Battery> batteries, int groundIndex) {
+        int voltageSourceCount = batteries.size();
+        int unknownNodeCount = nodeCount - 1;
+        if (unknownNodeCount <= 0) {
+            return null;
+        }
+        int size = unknownNodeCount + voltageSourceCount;
+        double[][] matrix = new double[size][size];
+        double[] rhs = new double[size];
+
+        for (Edge edge : edges) {
+            int a = edge.aIndex;
+            int b = edge.bIndex;
+            double conductance = 1.0 / edge.resistance;
+            if (a != groundIndex) {
+                int ia = nodeToMatrixIndex(a, groundIndex);
+                matrix[ia][ia] += conductance;
+            }
+            if (b != groundIndex) {
+                int ib = nodeToMatrixIndex(b, groundIndex);
+                matrix[ib][ib] += conductance;
+            }
+            if (a != groundIndex && b != groundIndex) {
+                int ia = nodeToMatrixIndex(a, groundIndex);
+                int ib = nodeToMatrixIndex(b, groundIndex);
+                matrix[ia][ib] -= conductance;
+                matrix[ib][ia] -= conductance;
+            }
+        }
+
+        for (int i = 0; i < batteries.size(); i++) {
+            Battery battery = batteries.get(i);
+            int p = battery.getPositiveNodeIndex();
+            int n = battery.getInternalNodeIndex();
+            if (p < 0 || n < 0) {
+                continue;
+            }
+            int row = unknownNodeCount + i;
+            if (p != groundIndex) {
+                int ip = nodeToMatrixIndex(p, groundIndex);
+                matrix[ip][row] += 1;
+                matrix[row][ip] += 1;
+            }
+            if (n != groundIndex) {
+                int in = nodeToMatrixIndex(n, groundIndex);
+                matrix[in][row] -= 1;
+                matrix[row][in] -= 1;
+            }
+            rhs[row] = battery.getVoltage();
+        }
+
+        double[] solution = solveLinearSystem(matrix, rhs);
+        if (solution == null) {
+            return null;
+        }
+        double[] voltages = new double[nodeCount];
+        for (int i = 0; i < nodeCount; i++) {
+            if (i == groundIndex) {
+                voltages[i] = 0;
+            } else {
+                int idx = nodeToMatrixIndex(i, groundIndex);
+                voltages[i] = solution[idx];
+            }
+        }
+        return voltages;
+    }
+
+    private static int nodeToMatrixIndex(int nodeIndex, int groundIndex) {
+        return nodeIndex < groundIndex ? nodeIndex : nodeIndex - 1;
+    }
+
+    private static double[] solveLinearSystem(double[][] matrix, double[] rhs) {
+        int n = rhs.length;
+        double[][] a = new double[n][n];
+        double[] b = new double[n];
+        for (int i = 0; i < n; i++) {
+            System.arraycopy(matrix[i], 0, a[i], 0, n);
+            b[i] = rhs[i];
+        }
+        for (int pivot = 0; pivot < n; pivot++) {
+            int maxRow = pivot;
+            for (int row = pivot + 1; row < n; row++) {
+                if (Math.abs(a[row][pivot]) > Math.abs(a[maxRow][pivot])) {
+                    maxRow = row;
+                }
+            }
+            if (Math.abs(a[maxRow][pivot]) < 1e-12) {
+                return null;
+            }
+            if (maxRow != pivot) {
+                double[] tempRow = a[pivot];
+                a[pivot] = a[maxRow];
+                a[maxRow] = tempRow;
+                double tempVal = b[pivot];
+                b[pivot] = b[maxRow];
+                b[maxRow] = tempVal;
+            }
+            double pivotVal = a[pivot][pivot];
+            for (int col = pivot; col < n; col++) {
+                a[pivot][col] /= pivotVal;
+            }
+            b[pivot] /= pivotVal;
+            for (int row = 0; row < n; row++) {
+                if (row == pivot) {
+                    continue;
+                }
+                double factor = a[row][pivot];
+                for (int col = pivot; col < n; col++) {
+                    a[row][col] -= factor * a[pivot][col];
+                }
+                b[row] -= factor * b[pivot];
+            }
+        }
+        return b;
+    }
+
+    private static int getNodeIndex(Map<Point, Integer> nodeIndex, int x, int y) {
+        Point key = new Point(x, y);
+        Integer existing = nodeIndex.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        int index = nodeIndex.size();
+        nodeIndex.put(key, index);
+        return index;
+    }
+
+    private static class Edge {
+        private final int aIndex;
+        private final int bIndex;
+        private final double resistance;
+        private final Wire wire;
+        private final Resistor resistor;
+
+        private Edge(int aIndex, int bIndex, double resistance) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = null;
+        }
+
+        private Edge(int aIndex, int bIndex, double resistance, Wire wire) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = wire;
+            this.resistor = null;
+        }
+
+        private Edge(int aIndex, int bIndex, double resistance, Resistor resistor) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = resistor;
+        }
+    }
+
+    private static class GraphView {
+        private final int nodeCount;
+        private final int groundIndex;
+        private final int positiveIndex;
+        private final List<Edge> edges;
+        private final List<Battery> batteries;
+        private final java.util.Set<Wire> wires;
+        private final java.util.Set<Resistor> resistors;
+
+        private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
+                List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors) {
+            this.nodeCount = nodeCount;
+            this.groundIndex = groundIndex;
+            this.positiveIndex = positiveIndex;
+            this.edges = edges;
+            this.batteries = batteries;
+            this.wires = wires;
+            this.resistors = resistors;
+        }
+    }
+
+    private static GraphView pruneToConnected(int nodeCount, List<Edge> edges, List<Battery> batteries,
+            int groundIndex, int positiveIndex) {
+        java.util.List<java.util.List<Integer>> adjacency = new java.util.ArrayList<>();
+        for (int i = 0; i < nodeCount; i++) {
+            adjacency.add(new java.util.ArrayList<>());
+        }
+        for (Edge edge : edges) {
+            adjacency.get(edge.aIndex).add(edge.bIndex);
+            adjacency.get(edge.bIndex).add(edge.aIndex);
+        }
+        for (Battery battery : batteries) {
+            int p = battery.getPositiveNodeIndex();
+            int n = battery.getInternalNodeIndex();
+            if (p >= 0 && n >= 0) {
+                adjacency.get(p).add(n);
+                adjacency.get(n).add(p);
+            }
+        }
+        boolean[] reachable = new boolean[nodeCount];
+        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        if (groundIndex >= 0) {
+            reachable[groundIndex] = true;
+            queue.add(groundIndex);
+        }
+        if (positiveIndex >= 0 && !reachable[positiveIndex]) {
+            reachable[positiveIndex] = true;
+            queue.add(positiveIndex);
+        }
+        while (!queue.isEmpty()) {
+            int current = queue.removeFirst();
+            for (int next : adjacency.get(current)) {
+                if (!reachable[next]) {
+                    reachable[next] = true;
+                    queue.add(next);
+                }
+            }
+        }
+        int[] remap = new int[nodeCount];
+        java.util.Arrays.fill(remap, -1);
+        int newCount = 0;
+        for (int i = 0; i < nodeCount; i++) {
+            if (reachable[i]) {
+                remap[i] = newCount++;
+            }
+        }
+        java.util.List<Edge> prunedEdges = new java.util.ArrayList<>();
+        java.util.Set<Wire> prunedWires = new java.util.HashSet<>();
+        java.util.Set<Resistor> prunedResistors = new java.util.HashSet<>();
+        for (Edge edge : edges) {
+            int a = remap[edge.aIndex];
+            int b = remap[edge.bIndex];
+            if (a >= 0 && b >= 0) {
+                Edge remapped;
+                if (edge.wire != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.wire);
+                    prunedWires.add(edge.wire);
+                } else if (edge.resistor != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.resistor);
+                    prunedResistors.add(edge.resistor);
+                } else {
+                    remapped = new Edge(a, b, edge.resistance);
+                }
+                prunedEdges.add(remapped);
+            }
+        }
+        java.util.List<Battery> prunedBatteries = new java.util.ArrayList<>();
+        for (Battery battery : batteries) {
+            int p = remap[battery.getPositiveNodeIndex()];
+            int n = remap[battery.getInternalNodeIndex()];
+            if (p >= 0 && n >= 0) {
+                battery.setPositiveNodeIndex(p);
+                battery.setInternalNodeIndex(n);
+                prunedBatteries.add(battery);
+            }
+        }
+        int remappedGround = remap[groundIndex];
+        int remappedPositive = remap[positiveIndex];
+        if (remappedGround < 0 || remappedPositive < 0) {
+            return new GraphView(0, remappedGround, remappedPositive, java.util.Collections.emptyList(),
+                    java.util.Collections.emptyList(), prunedWires, prunedResistors);
+        }
+        return new GraphView(newCount, remappedGround, remappedPositive, prunedEdges,
+                prunedBatteries, prunedWires, prunedResistors);
+    }
+}
