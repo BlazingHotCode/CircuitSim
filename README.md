@@ -1,7 +1,5 @@
 # CircuitSim
 
-Simple Java Swing starter project named "CircuitSim".
-
 ## Run
 
 ```sh
