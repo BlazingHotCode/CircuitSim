@@ -281,9 +281,8 @@ public abstract class CircuitComponent implements PropertyOwner {
         int radius = dotSize / 2;
         g2.setColor(circuitsim.ui.Colors.CONNECTION_DOT);
         for (ConnectionPoint point : connectionPoints) {
-            java.awt.Point center = getConnectionPointWorldRaw(point);
-            int centerX = center.x;
-            int centerY = center.y;
+            int centerX = getConnectionPointWorldX(point);
+            int centerY = getConnectionPointWorldY(point);
             g2.fillOval(centerX - radius, centerY - radius, dotSize, dotSize);
         }
     }
