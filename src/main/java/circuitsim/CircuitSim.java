@@ -3,6 +3,7 @@ package circuitsim;
 import circuitsim.ui.CircuitPanel;
 import circuitsim.ui.ComponentPropertiesPanel;
 import circuitsim.ui.WirePalettePanel;
+import circuitsim.ui.ClearBoardPanel;
 
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
@@ -23,9 +24,11 @@ public class CircuitSim {
             WirePalettePanel wirePalettePanel = new WirePalettePanel(
                     circuitPanel.getActiveWireColor(),
                     circuitPanel::setActiveWireColor);
+            ClearBoardPanel clearBoardPanel = new ClearBoardPanel(circuitPanel::requestClearBoard);
             JLayeredPane layeredPane = new JLayeredPane();
             layeredPane.add(circuitPanel, Integer.valueOf(0));
             layeredPane.add(wirePalettePanel, Integer.valueOf(1));
+            layeredPane.add(clearBoardPanel, Integer.valueOf(1));
             layeredPane.addComponentListener(new ComponentAdapter() {
                 @Override
                 public void componentResized(ComponentEvent e) {
@@ -37,6 +40,11 @@ public class CircuitSim {
                     int paletteY = height - paletteSize.height - 8;
                     wirePalettePanel.setBounds(paletteX, Math.max(8, paletteY),
                             paletteSize.width, paletteSize.height);
+                    java.awt.Dimension clearSize = clearBoardPanel.getPreferredSize();
+                    int clearX = paletteX + paletteSize.width + 8;
+                    int clearY = height - clearSize.height - 8;
+                    clearBoardPanel.setBounds(clearX, Math.max(8, clearY),
+                            clearSize.width, clearSize.height);
                 }
             });
             frame.add(layeredPane, BorderLayout.CENTER);

@@ -12,6 +12,8 @@ public final class ComponentRegistry {
         register("Resistor", (x, y) -> new Resistor(x, y));
         register("Voltmeter", (x, y) -> new Voltmeter(x, y));
         register("Ammeter", (x, y) -> new Ammeter(x, y));
+        register("Switch (User)", (x, y) -> new Switch(x, y));
+        register("Ground", (x, y) -> new Ground(x, y));
     }
 
     private ComponentRegistry() {

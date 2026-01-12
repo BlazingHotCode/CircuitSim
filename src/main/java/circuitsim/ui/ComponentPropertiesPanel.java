@@ -73,7 +73,12 @@ public class ComponentPropertiesPanel extends JPanel {
 
     public void setOwner(PropertyOwner owner) {
         this.owner = owner;
-        setVisible(owner != null);
+        if (owner == null || !hasEditableProperties(owner)) {
+            setVisible(false);
+            showNoSelection();
+            return;
+        }
+        setVisible(true);
         rebuildForm();
     }
 
@@ -95,6 +100,18 @@ public class ComponentPropertiesPanel extends JPanel {
         formPanel.add(emptyLabel, constraints);
         revalidate();
         repaint();
+    }
+
+    private boolean hasEditableProperties(PropertyOwner owner) {
+        if (owner == null) {
+            return false;
+        }
+        for (ComponentProperty property : owner.getProperties()) {
+            if (property.isEditable()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void rebuildForm() {

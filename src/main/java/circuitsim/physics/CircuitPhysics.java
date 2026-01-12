@@ -1,10 +1,12 @@
 package circuitsim.physics;
 
-import circuitsim.components.Battery;
 import circuitsim.components.Ammeter;
+import circuitsim.components.Battery;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ConnectionPoint;
 import circuitsim.components.Resistor;
+import circuitsim.components.SwitchLike;
+import circuitsim.components.Ground;
 import circuitsim.components.Voltmeter;
 import circuitsim.components.Wire;
 import circuitsim.components.WireNode;
@@ -25,6 +27,10 @@ public final class CircuitPhysics {
     }
 
     public static boolean update(List<CircuitComponent> components, Collection<Wire> wires) {
+        return updateInternal(components, wires);
+    }
+
+    private static boolean updateInternal(List<CircuitComponent> components, Collection<Wire> wires) {
         if (components == null || wires == null) {
             return false;
         }
@@ -51,7 +57,9 @@ public final class CircuitPhysics {
 
         List<Edge> edges = new ArrayList<>();
         List<Battery> batteries = new ArrayList<>();
+        List<Ground> grounds = new ArrayList<>();
         List<Voltmeter> voltmeters = new ArrayList<>();
+        List<SwitchLike> switches = new ArrayList<>();
         int nodeCount = nodeIndex.size();
         for (CircuitComponent component : components) {
             if (component instanceof Resistor) {
@@ -86,6 +94,25 @@ public final class CircuitPhysics {
                 edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, ammeter));
             } else if (component instanceof Voltmeter) {
                 voltmeters.add((Voltmeter) component);
+            } else if (component instanceof SwitchLike) {
+                SwitchLike circuitSwitch = (SwitchLike) component;
+                switches.add(circuitSwitch);
+                if (!circuitSwitch.isClosed()) {
+                    continue;
+                }
+                List<ConnectionPoint> points = component.getConnectionPoints();
+                if (points.size() < 2) {
+                    continue;
+                }
+                int aIndex = getNodeIndex(nodeIndex,
+                        component.getConnectionPointWorldX(points.get(0)),
+                        component.getConnectionPointWorldY(points.get(0)));
+                int bIndex = getNodeIndex(nodeIndex,
+                        component.getConnectionPointWorldX(points.get(1)),
+                        component.getConnectionPointWorldY(points.get(1)));
+                edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, circuitSwitch));
+            } else if (component instanceof Ground) {
+                grounds.add((Ground) component);
             }
         }
         for (Wire wire : wires) {
@@ -120,6 +147,7 @@ public final class CircuitPhysics {
         if (batteries.isEmpty()) {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
             return false;
         }
 
@@ -129,18 +157,16 @@ public final class CircuitPhysics {
         if (negative == null || positive == null) {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
             return false;
         }
-
-        int groundIndex = getNodeIndex(nodeIndex,
-                primaryBattery.getConnectionPointWorldX(negative),
-                primaryBattery.getConnectionPointWorldY(negative));
-        if (groundIndex < 0) {
+        Integer groundIndex = resolveGroundIndex(nodeIndex, grounds, primaryBattery);
+        if (groundIndex == null || groundIndex < 0) {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
             return false;
         }
-
         int positiveIndex = getNodeIndex(nodeIndex,
                 primaryBattery.getConnectionPointWorldX(positive),
                 primaryBattery.getConnectionPointWorldY(positive));
@@ -149,6 +175,7 @@ public final class CircuitPhysics {
             resetComputedValues(edges);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
             return false;
         }
 
@@ -158,6 +185,7 @@ public final class CircuitPhysics {
             resetComputedValues(pruned.edges);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
             return true;
         }
 
@@ -167,6 +195,7 @@ public final class CircuitPhysics {
             resetComputedValues(pruned.edges);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
             return false;
         }
 
@@ -188,9 +217,13 @@ public final class CircuitPhysics {
             if (edge.ammeter != null) {
                 edge.ammeter.setComputedAmpere((float) Math.abs(current));
             }
+            if (edge.circuitSwitch != null) {
+                edge.circuitSwitch.setComputedAmpere((float) Math.abs(current));
+            }
         }
         updateVoltmeterValues(voltmeters, nodeIndex, pruned, nodeVoltages);
         resetUnusedValues(edges, wires, pruned);
+        resetSwitchValues(switches);
         return false;
     }
 
@@ -206,6 +239,9 @@ public final class CircuitPhysics {
             }
             if (edge.ammeter != null) {
                 edge.ammeter.setComputedAmpere(0f);
+            }
+            if (edge.circuitSwitch != null) {
+                edge.circuitSwitch.setComputedAmpere(0f);
             }
         }
     }
@@ -225,12 +261,23 @@ public final class CircuitPhysics {
             if (edge.ammeter != null && !pruned.ammeters.contains(edge.ammeter)) {
                 edge.ammeter.setComputedAmpere(0f);
             }
+            if (edge.circuitSwitch != null && !pruned.switches.contains(edge.circuitSwitch)) {
+                edge.circuitSwitch.setComputedAmpere(0f);
+            }
         }
     }
 
     private static void resetVoltmeterValues(List<Voltmeter> voltmeters) {
         for (Voltmeter voltmeter : voltmeters) {
             voltmeter.setComputedVoltage(0f);
+        }
+    }
+
+    private static void resetSwitchValues(List<SwitchLike> switches) {
+        for (SwitchLike circuitSwitch : switches) {
+            if (!circuitSwitch.isClosed()) {
+                circuitSwitch.setComputedAmpere(0f);
+            }
         }
     }
 
@@ -262,6 +309,25 @@ public final class CircuitPhysics {
             voltmeter.setComputedVoltage((float) Math.abs(voltage));
         }
     }
+
+    private static Integer resolveGroundIndex(Map<Point, Integer> nodeIndex, List<Ground> grounds,
+            Battery primaryBattery) {
+        if (grounds != null && !grounds.isEmpty()) {
+            Ground ground = grounds.get(0);
+            List<ConnectionPoint> points = ground.getConnectionPoints();
+            if (!points.isEmpty()) {
+                ConnectionPoint point = points.get(0);
+                return getNodeIndex(nodeIndex,
+                        ground.getConnectionPointWorldX(point),
+                        ground.getConnectionPointWorldY(point));
+            }
+        }
+        ConnectionPoint negative = primaryBattery.getNegativePoint();
+        return getNodeIndex(nodeIndex,
+                primaryBattery.getConnectionPointWorldX(negative),
+                primaryBattery.getConnectionPointWorldY(negative));
+    }
+
 
     private static boolean detectShortCircuit(int start, int goal, int nodeCount, List<Edge> edges) {
         double[] dist = new double[nodeCount];
@@ -437,6 +503,7 @@ public final class CircuitPhysics {
         private final Wire wire;
         private final Resistor resistor;
         private final Ammeter ammeter;
+        private final SwitchLike circuitSwitch;
 
         private Edge(int aIndex, int bIndex, double resistance) {
             this.aIndex = aIndex;
@@ -445,6 +512,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.ammeter = null;
+            this.circuitSwitch = null;
         }
 
         private Edge(int aIndex, int bIndex, double resistance, Wire wire) {
@@ -454,6 +522,7 @@ public final class CircuitPhysics {
             this.wire = wire;
             this.resistor = null;
             this.ammeter = null;
+            this.circuitSwitch = null;
         }
 
         private Edge(int aIndex, int bIndex, double resistance, Resistor resistor) {
@@ -463,6 +532,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = resistor;
             this.ammeter = null;
+            this.circuitSwitch = null;
         }
 
         private Edge(int aIndex, int bIndex, double resistance, Ammeter ammeter) {
@@ -472,6 +542,17 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.ammeter = ammeter;
+            this.circuitSwitch = null;
+        }
+
+        private Edge(int aIndex, int bIndex, double resistance, SwitchLike circuitSwitch) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = null;
+            this.ammeter = null;
+            this.circuitSwitch = circuitSwitch;
         }
     }
 
@@ -484,11 +565,12 @@ public final class CircuitPhysics {
         private final java.util.Set<Wire> wires;
         private final java.util.Set<Resistor> resistors;
         private final java.util.Set<Ammeter> ammeters;
+        private final java.util.Set<SwitchLike> switches;
         private final int[] nodeRemap;
 
         private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
                 List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors,
-                java.util.Set<Ammeter> ammeters, int[] nodeRemap) {
+                java.util.Set<Ammeter> ammeters, java.util.Set<SwitchLike> switches, int[] nodeRemap) {
             this.nodeCount = nodeCount;
             this.groundIndex = groundIndex;
             this.positiveIndex = positiveIndex;
@@ -497,6 +579,7 @@ public final class CircuitPhysics {
             this.wires = wires;
             this.resistors = resistors;
             this.ammeters = ammeters;
+            this.switches = switches;
             this.nodeRemap = nodeRemap;
         }
     }
@@ -550,6 +633,7 @@ public final class CircuitPhysics {
         java.util.Set<Wire> prunedWires = new java.util.HashSet<>();
         java.util.Set<Resistor> prunedResistors = new java.util.HashSet<>();
         java.util.Set<Ammeter> prunedAmmeters = new java.util.HashSet<>();
+        java.util.Set<SwitchLike> prunedSwitches = new java.util.HashSet<>();
         for (Edge edge : edges) {
             int a = remap[edge.aIndex];
             int b = remap[edge.bIndex];
@@ -564,6 +648,9 @@ public final class CircuitPhysics {
                 } else if (edge.ammeter != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.ammeter);
                     prunedAmmeters.add(edge.ammeter);
+                } else if (edge.circuitSwitch != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.circuitSwitch);
+                    prunedSwitches.add(edge.circuitSwitch);
                 } else {
                     remapped = new Edge(a, b, edge.resistance);
                 }
@@ -584,9 +671,10 @@ public final class CircuitPhysics {
         int remappedPositive = remap[positiveIndex];
         if (remappedGround < 0 || remappedPositive < 0) {
             return new GraphView(0, remappedGround, remappedPositive, java.util.Collections.emptyList(),
-                    java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedAmmeters, remap);
+                    java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedAmmeters, prunedSwitches,
+                    remap);
         }
         return new GraphView(newCount, remappedGround, remappedPositive, prunedEdges,
-                prunedBatteries, prunedWires, prunedResistors, prunedAmmeters, remap);
+                prunedBatteries, prunedWires, prunedResistors, prunedAmmeters, prunedSwitches, remap);
     }
 }

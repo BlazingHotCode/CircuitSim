@@ -48,9 +48,15 @@ public abstract class CircuitComponent implements PropertyOwner {
         this.aspectRatio = width / (float) height;
         this.connectionAmount = Math.max(0, connectionAmount);
         this.displayName = getClass().getSimpleName();
-        properties.add(new BooleanProperty("Show Values", this::isShowingPropertyValues,
-                this::setShowPropertyValues, false));
-        properties.add(new BooleanProperty("Show Title", this::isShowTitle, this::setShowTitle, false));
+        if (includeDefaultProperties()) {
+            properties.add(new BooleanProperty("Show Values", this::isShowingPropertyValues,
+                    this::setShowPropertyValues, false));
+            properties.add(new BooleanProperty("Show Title", this::isShowTitle, this::setShowTitle, false));
+        }
+    }
+
+    protected boolean includeDefaultProperties() {
+        return true;
     }
 
     public boolean contains(int pointX, int pointY) {
@@ -203,7 +209,8 @@ public abstract class CircuitComponent implements PropertyOwner {
     public void rotate90() {
         double centerX = x + (width / 2.0);
         double centerY = y + (height / 2.0);
-        rotationQuarterTurns = (rotationQuarterTurns + 1) % 2;
+        int rotationLimit = allowFullRotation() ? 4 : 2;
+        rotationQuarterTurns = (rotationQuarterTurns + 1) % rotationLimit;
         int oldWidth = width;
         width = height;
         height = oldWidth;
@@ -212,6 +219,10 @@ public abstract class CircuitComponent implements PropertyOwner {
         if (aspectRatio != 0) {
             aspectRatio = 1f / aspectRatio;
         }
+    }
+
+    protected boolean allowFullRotation() {
+        return false;
     }
 
     @Override
