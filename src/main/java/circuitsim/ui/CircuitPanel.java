@@ -39,6 +39,7 @@ public class CircuitPanel extends JPanel {
     private Wire selectedWire;
     private WireNode newWireStartNode;
     private boolean creatingWire;
+    private boolean lockedWire;
     private Wire draggingWire;
     private int wireStartAX;
     private int wireStartAY;
@@ -71,6 +72,21 @@ public class CircuitPanel extends JPanel {
                     showContextMenu(e);
                     return;
                 }
+                if (creatingWire && lockedWire) {
+                    int endX = Grid.snap(e.getX());
+                    int endY = Grid.snap(e.getY());
+                    WireNode endNode = getOrCreateNodeAt(endX, endY);
+                    if (newWireStartNode != null && endNode != null
+                            && (newWireStartNode.getX() != endNode.getX()
+                            || newWireStartNode.getY() != endNode.getY())) {
+                        wires.add(new Wire(newWireStartNode, endNode));
+                    }
+                    creatingWire = false;
+                    lockedWire = false;
+                    newWireStartNode = null;
+                    repaint();
+                    return;
+                }
                 ConnectionPoint hitPoint = findConnectionPointAt(e.getX(), e.getY());
                 if (hitPoint != null) {
                     setSelectedComponent(hitPoint.getOwner());
@@ -79,6 +95,7 @@ public class CircuitPanel extends JPanel {
                     int startY = selectedComponent.getConnectionPointWorldY(hitPoint);
                     newWireStartNode = getOrCreateNodeAt(startX, startY);
                     creatingWire = true;
+                    lockedWire = true;
                     wireDragX = startX;
                     wireDragY = startY;
                     repaint();
@@ -88,6 +105,7 @@ public class CircuitPanel extends JPanel {
                 if (endpointHit != null) {
                     newWireStartNode = endpointHit.node;
                     creatingWire = true;
+                    lockedWire = true;
                     selectedWire = endpointHit.wire;
                     setSelectedComponent(null);
                     wireDragX = newWireStartNode.getX();
@@ -194,6 +212,9 @@ public class CircuitPanel extends JPanel {
                     showContextMenu(e);
                     return;
                 }
+                if (lockedWire) {
+                    return;
+                }
                 if (creatingWire) {
                     int endX = Grid.snap(e.getX());
                     int endY = Grid.snap(e.getY());
@@ -216,10 +237,21 @@ public class CircuitPanel extends JPanel {
                 draggedComponent = null;
                 resizing = false;
             }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                if (creatingWire) {
+                    wireDragX = Grid.snap(e.getX());
+                    wireDragY = Grid.snap(e.getY());
+                    repaint();
+                }
+            }
         };
         addMouseListener(mouseHandler);
         addMouseMotionListener(mouseHandler);
         configureDeleteKeyBindings();
+        configureRotateKeyBindings();
+        configureMoveKeyBindings();
     }
 
     @Override
@@ -429,6 +461,52 @@ public class CircuitPanel extends JPanel {
                 deleteSelected();
             }
         });
+    }
+
+    private void configureRotateKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_R, 0), "rotateSelection");
+        actionMap.put("rotateSelection", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (selectedComponent != null) {
+                    selectedComponent.rotate90();
+                    repaint();
+                }
+            }
+        });
+    }
+
+    private void configureMoveKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "moveSelectionLeft");
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "moveSelectionRight");
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "moveSelectionUp");
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "moveSelectionDown");
+        actionMap.put("moveSelectionLeft", new MoveSelectionAction(-Grid.SIZE, 0));
+        actionMap.put("moveSelectionRight", new MoveSelectionAction(Grid.SIZE, 0));
+        actionMap.put("moveSelectionUp", new MoveSelectionAction(0, -Grid.SIZE));
+        actionMap.put("moveSelectionDown", new MoveSelectionAction(0, Grid.SIZE));
+    }
+
+    private class MoveSelectionAction extends javax.swing.AbstractAction {
+        private final int dx;
+        private final int dy;
+
+        private MoveSelectionAction(int dx, int dy) {
+            this.dx = dx;
+            this.dy = dy;
+        }
+
+        @Override
+        public void actionPerformed(java.awt.event.ActionEvent e) {
+            if (selectedComponent != null) {
+                selectedComponent.setPosition(selectedComponent.getX() + dx, selectedComponent.getY() + dy);
+                repaint();
+            }
+        }
     }
 
     private void setSelectedComponent(CircuitComponent component) {
