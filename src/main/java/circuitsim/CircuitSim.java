@@ -21,6 +21,7 @@ public class CircuitSim {
             frame.setSize(800, 600);
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
+            frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
         });
     }
 }

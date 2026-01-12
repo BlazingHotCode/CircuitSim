@@ -117,13 +117,13 @@ public abstract class CircuitComponent implements PropertyOwner {
     }
 
     public int getConnectionPointWorldX(ConnectionPoint point) {
-        double[] rotated = getRotatedPoint(point.getX(), point.getY());
-        return circuitsim.ui.Grid.snap((int) Math.round(rotated[0]));
+        java.awt.Point rotated = getConnectionPointWorldRaw(point);
+        return circuitsim.ui.Grid.snap(rotated.x);
     }
 
     public int getConnectionPointWorldY(ConnectionPoint point) {
-        double[] rotated = getRotatedPoint(point.getX(), point.getY());
-        return circuitsim.ui.Grid.snap((int) Math.round(rotated[1]));
+        java.awt.Point rotated = getConnectionPointWorldRaw(point);
+        return circuitsim.ui.Grid.snap(rotated.y);
     }
 
     public void addConnection(ConnectionPoint point) {
@@ -201,10 +201,14 @@ public abstract class CircuitComponent implements PropertyOwner {
     }
 
     public void rotate90() {
-        rotationQuarterTurns = (rotationQuarterTurns + 1) % 4;
+        double centerX = x + (width / 2.0);
+        double centerY = y + (height / 2.0);
+        rotationQuarterTurns = (rotationQuarterTurns + 1) % 2;
         int oldWidth = width;
         width = height;
         height = oldWidth;
+        x = (int) Math.round(centerX - (width / 2.0));
+        y = (int) Math.round(centerY - (height / 2.0));
         if (aspectRatio != 0) {
             aspectRatio = 1f / aspectRatio;
         }
@@ -233,9 +237,28 @@ public abstract class CircuitComponent implements PropertyOwner {
         float scale = width / (float) baseWidth;
         g2.setStroke(new BasicStroke(Math.max(MIN_STROKE_WIDTH, BASE_STROKE_WIDTH * scale)));
         g2.setFont(originalFont.deriveFont(Math.max(MIN_FONT_SIZE, originalFont.getSize2D() * scale)));
+        int originalX = x;
+        int originalY = y;
+        int originalWidth = width;
+        int originalHeight = height;
+        boolean swapped = rotationQuarterTurns % 2 != 0;
+        if (swapped) {
+            double centerX = x + (width / 2.0);
+            double centerY = y + (height / 2.0);
+            width = originalHeight;
+            height = originalWidth;
+            x = (int) Math.round(centerX - (width / 2.0));
+            y = (int) Math.round(centerY - (height / 2.0));
+        }
         applyRotationTransform(g2);
         drawComponent(g2);
         g2.setTransform(originalTransform);
+        if (swapped) {
+            x = originalX;
+            y = originalY;
+            width = originalWidth;
+            height = originalHeight;
+        }
         drawConnectionPoints(g2);
         drawTitle(g2);
         drawPropertyValues(g2);
@@ -258,8 +281,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         int radius = dotSize / 2;
         g2.setColor(circuitsim.ui.Colors.CONNECTION_DOT);
         for (ConnectionPoint point : connectionPoints) {
-            int centerX = getConnectionPointWorldX(point);
-            int centerY = getConnectionPointWorldY(point);
+            java.awt.Point center = getConnectionPointWorldRaw(point);
+            int centerX = center.x;
+            int centerY = center.y;
             g2.fillOval(centerX - radius, centerY - radius, dotSize, dotSize);
         }
     }
@@ -323,18 +347,25 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.setTransform(originalTransform);
     }
 
-    private double[] getRotatedPoint(int pointX, int pointY) {
-        if (rotationQuarterTurns == 0) {
-            return new double[] { pointX, pointY };
-        }
+    private java.awt.Point getConnectionPointWorldRaw(ConnectionPoint point) {
         double centerX = x + (width / 2.0);
         double centerY = y + (height / 2.0);
+        int unrotatedWidth = (rotationQuarterTurns % 2 != 0) ? height : width;
+        int unrotatedHeight = (rotationQuarterTurns % 2 != 0) ? width : height;
+        double unrotatedX = centerX - (unrotatedWidth / 2.0);
+        double unrotatedY = centerY - (unrotatedHeight / 2.0);
+        double localX = unrotatedX + (unrotatedWidth * point.getRelativeX());
+        double localY = unrotatedY + (unrotatedHeight * point.getRelativeY());
+        if (rotationQuarterTurns == 0) {
+            return new java.awt.Point((int) Math.round(localX), (int) Math.round(localY));
+        }
         double angle = getRotationRadians();
-        double dx = pointX - centerX;
-        double dy = pointY - centerY;
+        double dx = localX - centerX;
+        double dy = localY - centerY;
         double rotatedX = (dx * Math.cos(angle)) - (dy * Math.sin(angle));
         double rotatedY = (dx * Math.sin(angle)) + (dy * Math.cos(angle));
-        return new double[] { centerX + rotatedX, centerY + rotatedY };
+        return new java.awt.Point((int) Math.round(centerX + rotatedX),
+                (int) Math.round(centerY + rotatedY));
     }
 
     protected abstract void drawComponent(Graphics2D g2);

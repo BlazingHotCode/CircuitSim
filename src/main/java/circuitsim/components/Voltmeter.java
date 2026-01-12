@@ -40,8 +40,33 @@ public class Voltmeter extends CircuitComponent {
         g2.drawRoundRect(x, y, width, height, arc, arc);
         String label = VALUE_FORMAT.format(computedVoltage) + " " + UNIT_LABEL;
         FontMetrics metrics = g2.getFontMetrics();
-        int textX = x + Math.max(6, width / 10);
+        int textWidth = metrics.stringWidth(label);
+        int textX = x + (width - textWidth) / 2;
         int textY = y + (height + metrics.getAscent() - metrics.getDescent()) / 2;
-        g2.drawString(label, textX, textY);
+        java.awt.geom.AffineTransform rotatedTransform = g2.getTransform();
+        double angle = getRotationRadians();
+        if (angle == 0) {
+            g2.drawString(label, textX, textY);
+            return;
+        }
+        double centerX = x + (width / 2.0);
+        double centerY = y + (height / 2.0);
+        java.awt.Point textPoint = rotatePoint(textX, textY, centerX, centerY, angle);
+        java.awt.geom.AffineTransform uprightTransform = new java.awt.geom.AffineTransform(rotatedTransform);
+        uprightTransform.rotate(-angle, centerX, centerY);
+        g2.setTransform(uprightTransform);
+        g2.drawString(label, textPoint.x, textPoint.y);
+        g2.setTransform(rotatedTransform);
+    }
+
+    private java.awt.Point rotatePoint(double x, double y, double centerX, double centerY, double angle) {
+        double dx = x - centerX;
+        double dy = y - centerY;
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        double rotatedX = (dx * cos) - (dy * sin);
+        double rotatedY = (dx * sin) + (dy * cos);
+        return new java.awt.Point((int) Math.round(centerX + rotatedX),
+                (int) Math.round(centerY + rotatedY));
     }
 }

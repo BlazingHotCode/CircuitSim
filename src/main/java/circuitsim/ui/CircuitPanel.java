@@ -232,13 +232,7 @@ public class CircuitPanel extends JPanel {
             component.draw(g);
         }
         if (selectedComponent != null) {
-            g.setColor(Colors.SELECTION);
-            java.awt.Rectangle bounds = selectedComponent.getBounds();
-            g.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
-            int handleX = bounds.x + bounds.width - RESIZE_HANDLE_SIZE;
-            int handleY = bounds.y + bounds.height - RESIZE_HANDLE_SIZE;
-            g.fillRect(handleX, handleY, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
-            drawRotateHandle((Graphics2D) g, bounds);
+            drawSelection((Graphics2D) g, selectedComponent);
         }
     }
 
@@ -284,6 +278,18 @@ public class CircuitPanel extends JPanel {
         int handleY = bounds.y - ROTATE_HANDLE_SIZE;
         return mouseX >= handleX && mouseX <= handleX + ROTATE_HANDLE_SIZE
                 && mouseY >= handleY && mouseY <= handleY + ROTATE_HANDLE_SIZE;
+    }
+
+    private void drawSelection(Graphics2D g2, CircuitComponent component) {
+        java.awt.Color originalColor = g2.getColor();
+        g2.setColor(Colors.SELECTION);
+        java.awt.Rectangle bounds = component.getBounds();
+        g2.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        int handleX = bounds.x + bounds.width - RESIZE_HANDLE_SIZE;
+        int handleY = bounds.y + bounds.height - RESIZE_HANDLE_SIZE;
+        g2.fillRect(handleX, handleY, RESIZE_HANDLE_SIZE, RESIZE_HANDLE_SIZE);
+        drawRotateHandle(g2, bounds);
+        g2.setColor(originalColor);
     }
 
     private void drawRotateHandle(Graphics2D g2, java.awt.Rectangle bounds) {
