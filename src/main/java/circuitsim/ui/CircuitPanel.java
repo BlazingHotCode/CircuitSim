@@ -7,6 +7,7 @@ import circuitsim.components.ConnectionPoint;
 import circuitsim.components.Voltmeter;
 import circuitsim.components.WireNode;
 import circuitsim.components.Wire;
+import circuitsim.components.WireColor;
 import circuitsim.physics.CircuitPhysics;
 import circuitsim.ui.ShortCircuitPopup;
 import circuitsim.ui.Colors;
@@ -72,6 +73,11 @@ public class CircuitPanel extends JPanel {
     private int selectionDragStartX;
     private int selectionDragStartY;
     private int selectionRotationTurns;
+    private WireColor activeWireColor = WireColor.WHITE;
+    private List<RenderWire> lastRenderWires = new ArrayList<>();
+    private static final int WIRE_OFFSET_STEP = 6;
+    private static final int CROSSING_RADIUS = 7;
+    private Wire pendingWireStartAnchor;
 
     public CircuitPanel(ComponentPropertiesPanel propertiesPanel) {
         this.propertiesPanel = propertiesPanel;
@@ -92,15 +98,12 @@ public class CircuitPanel extends JPanel {
                 if (creatingWire && lockedWire) {
                     int endX = Grid.snap(e.getX());
                     int endY = Grid.snap(e.getY());
-                    WireNode endNode = getOrCreateNodeAt(endX, endY);
-                    if (newWireStartNode != null && endNode != null
-                            && (newWireStartNode.getX() != endNode.getX()
-                            || newWireStartNode.getY() != endNode.getY())) {
-                        wires.add(new Wire(newWireStartNode, endNode));
-                    }
+                    WireEndpointHit endHit = findWireEndpointAt(endX, endY);
+                    finalizeWire(endX, endY, endHit == null ? null : endHit.wire);
                     creatingWire = false;
                     lockedWire = false;
                     newWireStartNode = null;
+                    pendingWireStartAnchor = null;
                     repaint();
                     return;
                 }
@@ -117,6 +120,7 @@ public class CircuitPanel extends JPanel {
                     newWireStartNode = getOrCreateNodeAt(startX, startY);
                     creatingWire = true;
                     lockedWire = e.isShiftDown();
+                    pendingWireStartAnchor = null;
                     wireDragX = startX;
                     wireDragY = startY;
                     repaint();
@@ -133,6 +137,7 @@ public class CircuitPanel extends JPanel {
                     creatingWire = true;
                     lockedWire = e.isShiftDown();
                     selectWire(endpointHit.wire);
+                    pendingWireStartAnchor = endpointHit.wire;
                     wireDragX = newWireStartNode.getX();
                     wireDragY = newWireStartNode.getY();
                     repaint();
@@ -290,14 +295,11 @@ public class CircuitPanel extends JPanel {
                 if (creatingWire) {
                     int endX = Grid.snap(e.getX());
                     int endY = Grid.snap(e.getY());
-                    WireNode endNode = getOrCreateNodeAt(endX, endY);
-                    if (newWireStartNode != null && endNode != null
-                            && (newWireStartNode.getX() != endNode.getX()
-                            || newWireStartNode.getY() != endNode.getY())) {
-                        wires.add(new Wire(newWireStartNode, endNode));
-                    }
+                    WireEndpointHit endHit = findWireEndpointAt(endX, endY);
+                    finalizeWire(endX, endY, endHit == null ? null : endHit.wire);
                     creatingWire = false;
                     newWireStartNode = null;
+                    pendingWireStartAnchor = null;
                     repaint();
                     return;
                 }
@@ -352,7 +354,7 @@ public class CircuitPanel extends JPanel {
             return;
         }
         Color originalColor = g2.getColor();
-        g2.setColor(Colors.WIRE);
+        g2.setColor(activeWireColor.getColor());
         g2.drawLine(newWireStartNode.getX(), newWireStartNode.getY(), wireDragX, wireDragY);
         g2.setColor(originalColor);
     }
@@ -370,9 +372,11 @@ public class CircuitPanel extends JPanel {
         for (Wire wire : wires) {
             wire.setShortCircuit(shortCircuit);
         }
-        for (Wire wire : wires) {
-            wire.draw(g2);
+        lastRenderWires = buildRenderWires();
+        for (RenderWire renderWire : lastRenderWires) {
+            renderWire.wire.drawAt(g2, renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2);
         }
+        drawWireCrossings(g2, lastRenderWires);
     }
 
     private boolean isInResizeHandle(CircuitComponent component, int mouseX, int mouseY) {
@@ -426,12 +430,16 @@ public class CircuitPanel extends JPanel {
         java.awt.Stroke originalStroke = g2.getStroke();
         g2.setColor(Colors.SELECTION);
         g2.setStroke(new java.awt.BasicStroke(5f));
+        Map<Wire, RenderWire> renderMap = new HashMap<>();
+        for (RenderWire renderWire : lastRenderWires) {
+            renderMap.put(renderWire.wire, renderWire);
+        }
         for (Wire wire : selectedWires) {
-            if (wire.getStart() == null || wire.getEnd() == null) {
+            RenderWire renderWire = renderMap.get(wire);
+            if (renderWire == null) {
                 continue;
             }
-            g2.drawLine(wire.getStart().getX(), wire.getStart().getY(),
-                    wire.getEnd().getX(), wire.getEnd().getY());
+            g2.drawLine(renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2);
         }
         g2.setStroke(originalStroke);
         g2.setColor(originalColor);
@@ -883,12 +891,36 @@ public class CircuitPanel extends JPanel {
         node.setPosition(Grid.snap((int) Math.round(rotatedX)), Grid.snap((int) Math.round(rotatedY)));
     }
 
+    private void finalizeWire(int endX, int endY, Wire endAnchorWire) {
+        WireNode endNode = getOrCreateNodeAt(endX, endY);
+        if (newWireStartNode != null && endNode != null
+                && (newWireStartNode.getX() != endNode.getX()
+                || newWireStartNode.getY() != endNode.getY())) {
+            Wire wire = new Wire(newWireStartNode, endNode, activeWireColor);
+            if (pendingWireStartAnchor != null) {
+                wire.setStartAnchorWire(pendingWireStartAnchor);
+            }
+            if (endAnchorWire != null) {
+                wire.setEndAnchorWire(endAnchorWire);
+            }
+            wires.add(wire);
+        }
+    }
+
     private void resetSelectionRotationState() {
         selectionRotationTurns = 0;
         selectionBaseRotations.clear();
         for (CircuitComponent component : selectedComponents) {
             selectionBaseRotations.put(component, component.getRotationQuarterTurns() % 2);
         }
+    }
+
+    public void setActiveWireColor(WireColor color) {
+        this.activeWireColor = color == null ? WireColor.WHITE : color;
+    }
+
+    public WireColor getActiveWireColor() {
+        return activeWireColor;
     }
 
     private WireHit findWireAt(int mouseX, int mouseY) {
@@ -1019,6 +1051,36 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    private static class RenderWire {
+        private final Wire wire;
+        private final int x1;
+        private final int y1;
+        private final int x2;
+        private final int y2;
+        private final double angle;
+
+        private RenderWire(Wire wire, int x1, int y1, int x2, int y2) {
+            this.wire = wire;
+            this.x1 = x1;
+            this.y1 = y1;
+            this.x2 = x2;
+            this.y2 = y2;
+            this.angle = Math.atan2(y2 - y1, x2 - x1);
+        }
+    }
+
+    private static class WireCrossing {
+        private final int x;
+        private final int y;
+        private final double angle;
+
+        private WireCrossing(int x, int y, double angle) {
+            this.x = x;
+            this.y = y;
+            this.angle = angle;
+        }
+    }
+
     private double distanceToSegment(int px, int py, int x1, int y1, int x2, int y2) {
         double dx = x2 - x1;
         double dy = y2 - y1;
@@ -1030,6 +1092,349 @@ public class CircuitPanel extends JPanel {
         double projX = x1 + (t * dx);
         double projY = y1 + (t * dy);
         return Math.hypot(px - projX, py - projY);
+    }
+
+    private List<RenderWire> buildRenderWires() {
+        List<RenderWire> renderWires = new ArrayList<>();
+        Map<Wire, Offset> offsets = computeWireOffsets();
+        Map<WireNode, Offset> nodeOffsets = computeNodeOffsets(offsets);
+        for (Wire wire : wires) {
+            if (wire.getStart() == null || wire.getEnd() == null) {
+                continue;
+            }
+            Offset wireOffset = offsets.getOrDefault(wire, new Offset(0, 0));
+            Offset startOffset = resolveEndpointOffset(wire, wire.getStart(), true, wireOffset, offsets, nodeOffsets);
+            Offset endOffset = resolveEndpointOffset(wire, wire.getEnd(), false, wireOffset, offsets, nodeOffsets);
+            int startX = wire.getStart().getX() + startOffset.dx;
+            int startY = wire.getStart().getY() + startOffset.dy;
+            int endX = wire.getEnd().getX() + endOffset.dx;
+            int endY = wire.getEnd().getY() + endOffset.dy;
+            renderWires.add(new RenderWire(wire, startX, startY, endX, endY));
+        }
+        return renderWires;
+    }
+
+    private void drawWireCrossings(Graphics2D g2, List<RenderWire> renderWires) {
+        Map<Wire, List<WireCrossing>> crossings = computeWireCrossings(renderWires);
+        if (crossings.isEmpty()) {
+            return;
+        }
+        java.awt.Stroke originalStroke = g2.getStroke();
+        java.awt.Color originalColor = g2.getColor();
+        g2.setStroke(new java.awt.BasicStroke(Wire.getStrokeWidth()));
+        for (RenderWire renderWire : renderWires) {
+            List<WireCrossing> wireCrossings = crossings.get(renderWire.wire);
+            if (wireCrossings == null) {
+                continue;
+            }
+            for (WireCrossing crossing : wireCrossings) {
+                g2.setColor(Colors.CANVAS_BG);
+                g2.fillOval(crossing.x - CROSSING_RADIUS, crossing.y - CROSSING_RADIUS,
+                        CROSSING_RADIUS * 2, CROSSING_RADIUS * 2);
+                java.awt.geom.AffineTransform originalTransform = g2.getTransform();
+                g2.translate(crossing.x, crossing.y);
+                g2.rotate(crossing.angle);
+                g2.setColor(renderWire.wire.getColor());
+                g2.drawArc(-CROSSING_RADIUS, -CROSSING_RADIUS,
+                        CROSSING_RADIUS * 2, CROSSING_RADIUS * 2, 0, 180);
+                g2.setTransform(originalTransform);
+            }
+        }
+        g2.setStroke(originalStroke);
+        g2.setColor(originalColor);
+    }
+
+    private Map<Wire, List<WireCrossing>> computeWireCrossings(List<RenderWire> renderWires) {
+        Map<Wire, List<WireCrossing>> crossings = new HashMap<>();
+        Map<Wire, Set<PointKey>> seen = new HashMap<>();
+        for (int i = 0; i < renderWires.size(); i++) {
+            RenderWire first = renderWires.get(i);
+            for (int j = i + 1; j < renderWires.size(); j++) {
+                RenderWire second = renderWires.get(j);
+                if (sharesNode(first.wire, second.wire)) {
+                    continue;
+                }
+                if (areColinear(first, second)) {
+                    continue;
+                }
+                java.awt.Point intersection = getIntersectionPoint(first, second);
+                if (intersection == null) {
+                    continue;
+                }
+                RenderWire overWire = chooseOverWire(first, second);
+                PointKey key = new PointKey(intersection.x, intersection.y);
+                Set<PointKey> seenPoints = seen.computeIfAbsent(overWire.wire, wire -> new HashSet<>());
+                if (seenPoints.add(key)) {
+                    crossings.computeIfAbsent(overWire.wire, wire -> new ArrayList<>())
+                            .add(new WireCrossing(intersection.x, intersection.y, overWire.angle));
+                }
+            }
+        }
+        return crossings;
+    }
+
+    private RenderWire chooseOverWire(RenderWire first, RenderWire second) {
+        boolean firstVertical = isMostlyVertical(first);
+        boolean secondVertical = isMostlyVertical(second);
+        if (firstVertical != secondVertical) {
+            return firstVertical ? first : second;
+        }
+        return second;
+    }
+
+    private boolean isMostlyVertical(RenderWire wire) {
+        int dx = Math.abs(wire.x2 - wire.x1);
+        int dy = Math.abs(wire.y2 - wire.y1);
+        return dy > dx;
+    }
+
+    private boolean sharesNode(Wire first, Wire second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        WireNode aStart = first.getStart();
+        WireNode aEnd = first.getEnd();
+        WireNode bStart = second.getStart();
+        WireNode bEnd = second.getEnd();
+        return (aStart != null && (aStart == bStart || aStart == bEnd))
+                || (aEnd != null && (aEnd == bStart || aEnd == bEnd));
+    }
+
+    private boolean areColinear(RenderWire first, RenderWire second) {
+        long dx1 = first.x2 - first.x1;
+        long dy1 = first.y2 - first.y1;
+        long dx2 = second.x2 - second.x1;
+        long dy2 = second.y2 - second.y1;
+        return (dx1 * dy2) - (dy1 * dx2) == 0;
+    }
+
+    private java.awt.Point getIntersectionPoint(RenderWire first, RenderWire second) {
+        double x1 = first.x1;
+        double y1 = first.y1;
+        double x2 = first.x2;
+        double y2 = first.y2;
+        double x3 = second.x1;
+        double y3 = second.y1;
+        double x4 = second.x2;
+        double y4 = second.y2;
+        double denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        if (Math.abs(denom) < 0.0001) {
+            return null;
+        }
+        double det1 = (x1 * y2) - (y1 * x2);
+        double det2 = (x3 * y4) - (y3 * x4);
+        double px = (det1 * (x3 - x4) - (x1 - x2) * det2) / denom;
+        double py = (det1 * (y3 - y4) - (y1 - y2) * det2) / denom;
+        if (!isWithinSegment(px, py, x1, y1, x2, y2)
+                || !isWithinSegment(px, py, x3, y3, x4, y4)) {
+            return null;
+        }
+        return new java.awt.Point((int) Math.round(px), (int) Math.round(py));
+    }
+
+    private boolean isWithinSegment(double px, double py, double x1, double y1, double x2, double y2) {
+        double minX = Math.min(x1, x2) - 0.1;
+        double maxX = Math.max(x1, x2) + 0.1;
+        double minY = Math.min(y1, y2) - 0.1;
+        double maxY = Math.max(y1, y2) + 0.1;
+        return px >= minX && px <= maxX && py >= minY && py <= maxY;
+    }
+
+    private Map<Wire, Offset> computeWireOffsets() {
+        Map<Wire, Offset> offsets = new HashMap<>();
+        List<List<Wire>> groups = new ArrayList<>();
+        for (Wire wire : wires) {
+            if (wire.getStart() == null || wire.getEnd() == null) {
+                continue;
+            }
+            List<Wire> targetGroup = null;
+            for (List<Wire> group : groups) {
+                if (!group.isEmpty() && areColinearOverlap(wire, group.get(0))) {
+                    targetGroup = group;
+                    break;
+                }
+            }
+            if (targetGroup == null) {
+                targetGroup = new ArrayList<>();
+                groups.add(targetGroup);
+            }
+            targetGroup.add(wire);
+        }
+        for (List<Wire> group : groups) {
+            if (group.size() <= 1) {
+                Wire wire = group.get(0);
+                offsets.put(wire, new Offset(0, 0));
+                continue;
+            }
+            Wire base = group.get(0);
+            int dx = base.getEnd().getX() - base.getStart().getX();
+            int dy = base.getEnd().getY() - base.getStart().getY();
+            double length = Math.hypot(dx, dy);
+            if (length == 0) {
+                for (Wire wire : group) {
+                    offsets.put(wire, new Offset(0, 0));
+                }
+                continue;
+            }
+            double normalX = -dy / length;
+            double normalY = dx / length;
+            int count = group.size();
+            for (int i = 0; i < count; i++) {
+                double index = i - (count - 1) / 2.0;
+                int offsetX = (int) Math.round(normalX * index * WIRE_OFFSET_STEP);
+                int offsetY = (int) Math.round(normalY * index * WIRE_OFFSET_STEP);
+                offsets.put(group.get(i), new Offset(offsetX, offsetY));
+            }
+        }
+        return offsets;
+    }
+
+    private Map<WireNode, Offset> computeNodeOffsets(Map<Wire, Offset> wireOffsets) {
+        Map<WireNode, OffsetAccumulator> accumulators = new HashMap<>();
+        for (Wire wire : wires) {
+            Offset offset = wireOffsets.getOrDefault(wire, new Offset(0, 0));
+            if (offset.isZero()) {
+                continue;
+            }
+            addOffsetToNode(accumulators, wire.getStart(), offset);
+            addOffsetToNode(accumulators, wire.getEnd(), offset);
+        }
+        Map<WireNode, Offset> nodeOffsets = new HashMap<>();
+        for (Map.Entry<WireNode, OffsetAccumulator> entry : accumulators.entrySet()) {
+            OffsetAccumulator accumulator = entry.getValue();
+            if (accumulator.count == 0) {
+                continue;
+            }
+            int dx = Math.round(accumulator.sumDx / (float) accumulator.count);
+            int dy = Math.round(accumulator.sumDy / (float) accumulator.count);
+            nodeOffsets.put(entry.getKey(), new Offset(dx, dy));
+        }
+        return nodeOffsets;
+    }
+
+    private Offset resolveEndpointOffset(Wire wire, WireNode node, boolean isStart, Offset wireOffset,
+            Map<Wire, Offset> wireOffsets, Map<WireNode, Offset> nodeOffsets) {
+        if (!wireOffset.isZero()) {
+            return wireOffset;
+        }
+        Wire anchor = isStart ? wire.getStartAnchorWire() : wire.getEndAnchorWire();
+        if (anchor != null) {
+            Offset anchorOffset = wireOffsets.getOrDefault(anchor, new Offset(0, 0));
+            if (!anchorOffset.isZero()) {
+                return anchorOffset;
+            }
+        }
+        return nodeOffsets.getOrDefault(node, wireOffset);
+    }
+
+    private void addOffsetToNode(Map<WireNode, OffsetAccumulator> accumulators, WireNode node, Offset offset) {
+        if (node == null) {
+            return;
+        }
+        OffsetAccumulator accumulator = accumulators.get(node);
+        if (accumulator == null) {
+            accumulator = new OffsetAccumulator();
+            accumulators.put(node, accumulator);
+        }
+        accumulator.sumDx += offset.dx;
+        accumulator.sumDy += offset.dy;
+        accumulator.count++;
+    }
+
+    private boolean areColinearOverlap(Wire first, Wire second) {
+        if (!areColinear(first, second)) {
+            return false;
+        }
+        return segmentsOverlap(first, second);
+    }
+
+    private boolean areColinear(Wire first, Wire second) {
+        int x1 = first.getStart().getX();
+        int y1 = first.getStart().getY();
+        int x2 = first.getEnd().getX();
+        int y2 = first.getEnd().getY();
+        int x3 = second.getStart().getX();
+        int y3 = second.getStart().getY();
+        int x4 = second.getEnd().getX();
+        int y4 = second.getEnd().getY();
+        long dx1 = x2 - x1;
+        long dy1 = y2 - y1;
+        long dx3 = x3 - x1;
+        long dy3 = y3 - y1;
+        long dx4 = x4 - x1;
+        long dy4 = y4 - y1;
+        return (dx1 * dy3) - (dy1 * dx3) == 0 && (dx1 * dy4) - (dy1 * dx4) == 0;
+    }
+
+    private boolean segmentsOverlap(Wire first, Wire second) {
+        int x1 = first.getStart().getX();
+        int y1 = first.getStart().getY();
+        int x2 = first.getEnd().getX();
+        int y2 = first.getEnd().getY();
+        int x3 = second.getStart().getX();
+        int y3 = second.getStart().getY();
+        int x4 = second.getEnd().getX();
+        int y4 = second.getEnd().getY();
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double lengthSq = (dx * dx) + (dy * dy);
+        if (lengthSq == 0) {
+            return false;
+        }
+        double t1 = ((x3 - x1) * dx + (y3 - y1) * dy) / lengthSq;
+        double t2 = ((x4 - x1) * dx + (y4 - y1) * dy) / lengthSq;
+        double minA = Math.min(0, 1);
+        double maxA = Math.max(0, 1);
+        double minB = Math.min(t1, t2);
+        double maxB = Math.max(t1, t2);
+        return maxB >= minA && minB <= maxA;
+    }
+
+    private static class Offset {
+        private final int dx;
+        private final int dy;
+
+        private Offset(int dx, int dy) {
+            this.dx = dx;
+            this.dy = dy;
+        }
+
+        private boolean isZero() {
+            return dx == 0 && dy == 0;
+        }
+    }
+
+    private static class OffsetAccumulator {
+        private int sumDx;
+        private int sumDy;
+        private int count;
+    }
+
+    private static class PointKey {
+        private final int x;
+        private final int y;
+
+        private PointKey(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof PointKey)) {
+                return false;
+            }
+            PointKey other = (PointKey) obj;
+            return x == other.x && y == other.y;
+        }
+
+        @Override
+        public int hashCode() {
+            return (31 * x) + y;
+        }
     }
 
     private ConnectionPoint findConnectionPointAt(int mouseX, int mouseY) {

@@ -20,24 +20,36 @@ public class Wire {
     private float computedVoltage = 0f;
     private float computedAmpere = 0f;
     private boolean shortCircuit = false;
+    private WireColor color;
+    private Wire startAnchorWire;
+    private Wire endAnchorWire;
 
     public Wire(WireNode start, WireNode end) {
+        this(start, end, WireColor.WHITE);
+    }
+
+    public Wire(WireNode start, WireNode end, WireColor color) {
         this.start = start;
         this.end = end;
         this.start.addWire(this);
         this.end.addWire(this);
+        this.color = color == null ? WireColor.WHITE : color;
     }
 
     public void draw(Graphics2D g2) {
         if (start == null || end == null) {
             return;
         }
+        drawAt(g2, start.getX(), start.getY(), end.getX(), end.getY());
+    }
+
+    public void drawAt(Graphics2D g2, int startX, int startY, int endX, int endY) {
         Color originalColor = g2.getColor();
         Stroke originalStroke = g2.getStroke();
-        g2.setColor(Colors.WIRE);
+        g2.setColor(color.getColor());
         g2.setStroke(new BasicStroke(STROKE_WIDTH));
-        g2.drawLine(start.getX(), start.getY(), end.getX(), end.getY());
-        drawDataLabel(g2);
+        g2.drawLine(startX, startY, endX, endY);
+        drawDataLabel(g2, startX, startY, endX, endY);
         g2.setColor(originalColor);
         g2.setStroke(originalStroke);
     }
@@ -111,6 +123,38 @@ public class Wire {
         this.shortCircuit = shortCircuit;
     }
 
+    public Wire getStartAnchorWire() {
+        return startAnchorWire;
+    }
+
+    public void setStartAnchorWire(Wire startAnchorWire) {
+        this.startAnchorWire = startAnchorWire;
+    }
+
+    public Wire getEndAnchorWire() {
+        return endAnchorWire;
+    }
+
+    public void setEndAnchorWire(Wire endAnchorWire) {
+        this.endAnchorWire = endAnchorWire;
+    }
+
+    public WireColor getWireColor() {
+        return color;
+    }
+
+    public void setWireColor(WireColor color) {
+        this.color = color == null ? WireColor.WHITE : color;
+    }
+
+    public Color getColor() {
+        return color.getColor();
+    }
+
+    public static float getStrokeWidth() {
+        return STROKE_WIDTH;
+    }
+
     public void moveBy(int dx, int dy) {
         if (start != null) {
             start.setPosition(start.getX() + dx, start.getY() + dy);
@@ -120,14 +164,10 @@ public class Wire {
         }
     }
 
-    private void drawDataLabel(Graphics2D g2) {
+    private void drawDataLabel(Graphics2D g2, int startX, int startY, int endX, int endY) {
         if (!showData) {
             return;
         }
-        int startX = start.getX();
-        int startY = start.getY();
-        int endX = end.getX();
-        int endY = end.getY();
         String label;
         if (shortCircuit) {
             label = "∞";

@@ -21,6 +21,9 @@ public final class Colors {
     public static final Color TITLE_SELECTED_TEXT = new Color(20, 20, 24);
     public static final Color SHORT_POPUP_BG = new Color(80, 30, 30);
     public static final Color SHORT_POPUP_TEXT = new Color(240, 220, 220);
+    public static final Color WIRE_PALETTE_BG = new Color(38, 38, 42);
+    public static final Color WIRE_PALETTE_BORDER = new Color(70, 70, 80);
+    public static final Color WIRE_PALETTE_SELECTED = new Color(130, 200, 255);
 
     private Colors() {
     }
