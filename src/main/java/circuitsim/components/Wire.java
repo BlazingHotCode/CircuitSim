@@ -66,6 +66,7 @@ public class Wire {
         g2.setColor(color.getColor());
         g2.setStroke(new BasicStroke(STROKE_WIDTH));
         g2.drawLine(startX, startY, endX, endY);
+        drawPoweredHighlight(g2, startX, startY, endX, endY);
         drawDataLabel(g2, startX, startY, endX, endY);
         g2.setColor(originalColor);
         g2.setStroke(originalStroke);
@@ -282,5 +283,24 @@ public class Wire {
         }
         g2.setTransform(originalTransform);
         g2.setColor(originalColor);
+    }
+
+    /**
+     * Draws a powered highlight segment at the middle of the wire.
+     */
+    private void drawPoweredHighlight(Graphics2D g2, int startX, int startY, int endX, int endY) {
+        if (computedAmpere <= 0.0001f) {
+            return;
+        }
+        Color highlight = color == WireColor.RED
+                ? new Color(160, 40, 40)
+                : new Color(220, 60, 60);
+        Color originalColor = g2.getColor();
+        Stroke originalStroke = g2.getStroke();
+        g2.setColor(highlight);
+        g2.setStroke(new BasicStroke(Math.max(1f, STROKE_WIDTH - 1f)));
+        g2.drawLine(startX, startY, endX, endY);
+        g2.setColor(originalColor);
+        g2.setStroke(originalStroke);
     }
 }

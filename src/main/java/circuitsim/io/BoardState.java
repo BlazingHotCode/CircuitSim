@@ -1,6 +1,7 @@
 package circuitsim.io;
 
 import circuitsim.components.WireColor;
+import circuitsim.custom.CustomComponentDefinition;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,6 +19,7 @@ public final class BoardState {
     private final WireColor activeWireColor;
     private final List<ComponentState> components;
     private final List<WireState> wires;
+    private final List<CustomComponentDefinition> customComponents;
 
     /**
      * @param version schema version
@@ -27,6 +29,19 @@ public final class BoardState {
      */
     public BoardState(int version, WireColor activeWireColor,
                       List<ComponentState> components, List<WireState> wires) {
+        this(version, activeWireColor, components, wires, Collections.emptyList());
+    }
+
+    /**
+     * @param version schema version
+     * @param activeWireColor active wire color
+     * @param components component states
+     * @param wires wire states
+     * @param customComponents embedded custom component definitions
+     */
+    public BoardState(int version, WireColor activeWireColor,
+                      List<ComponentState> components, List<WireState> wires,
+                      List<CustomComponentDefinition> customComponents) {
         this.version = version;
         this.activeWireColor = activeWireColor == null ? WireColor.WHITE : activeWireColor;
         this.components = Collections.unmodifiableList(new ArrayList<>(components == null
@@ -35,6 +50,9 @@ public final class BoardState {
         this.wires = Collections.unmodifiableList(new ArrayList<>(wires == null
                 ? Collections.emptyList()
                 : wires));
+        this.customComponents = Collections.unmodifiableList(new ArrayList<>(customComponents == null
+                ? Collections.emptyList()
+                : customComponents));
     }
 
     /**
@@ -66,6 +84,13 @@ public final class BoardState {
     }
 
     /**
+     * @return embedded custom component definitions
+     */
+    public List<CustomComponentDefinition> getCustomComponents() {
+        return customComponents;
+    }
+
+    /**
      * Serialized component metadata.
      */
     public static final class ComponentState {
@@ -76,6 +101,7 @@ public final class BoardState {
         private final int height;
         private final int rotationQuarterTurns;
         private final String displayName;
+        private final String customId;
         private final boolean showTitle;
         private final boolean showValues;
         private final Float voltage;
@@ -101,6 +127,29 @@ public final class BoardState {
         public ComponentState(String type, int x, int y, int width, int height, int rotationQuarterTurns,
                               String displayName, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
+            this(type, x, y, width, height, rotationQuarterTurns, displayName, null,
+                    showTitle, showValues, voltage, internalResistance, resistance, closed);
+        }
+
+        /**
+         * @param type component type name
+         * @param x left position
+         * @param y top position
+         * @param width width in pixels
+         * @param height height in pixels
+         * @param rotationQuarterTurns rotation in quarter turns
+         * @param displayName display name
+         * @param customId custom component id (optional)
+         * @param showTitle show title flag
+         * @param showValues show values flag
+         * @param voltage battery voltage (optional)
+         * @param internalResistance battery internal resistance (optional)
+         * @param resistance resistor resistance (optional)
+         * @param closed switch closed state (optional)
+         */
+        public ComponentState(String type, int x, int y, int width, int height, int rotationQuarterTurns,
+                              String displayName, String customId, boolean showTitle, boolean showValues,
+                              Float voltage, Float internalResistance, Float resistance, Boolean closed) {
             this.type = type;
             this.x = x;
             this.y = y;
@@ -108,6 +157,7 @@ public final class BoardState {
             this.height = height;
             this.rotationQuarterTurns = rotationQuarterTurns;
             this.displayName = displayName;
+            this.customId = customId;
             this.showTitle = showTitle;
             this.showValues = showValues;
             this.voltage = voltage;
@@ -163,6 +213,13 @@ public final class BoardState {
          */
         public String getDisplayName() {
             return displayName;
+        }
+
+        /**
+         * @return custom component id, if any
+         */
+        public String getCustomId() {
+            return customId;
         }
 
         /**

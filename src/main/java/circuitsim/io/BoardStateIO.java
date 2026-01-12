@@ -1,6 +1,8 @@
 package circuitsim.io;
 
 import circuitsim.components.WireColor;
+import circuitsim.custom.CustomComponentDefinition;
+import circuitsim.custom.CustomComponentPort;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,6 +33,7 @@ public final class BoardStateIO {
         boolean[] first = new boolean[] { true };
         appendNumberField(out, first, "version", state.getVersion());
         appendStringField(out, first, "activeWireColor", state.getActiveWireColor().name());
+        appendCustomComponents(out, first, state.getCustomComponents());
         appendComponents(out, first, state.getComponents());
         appendWires(out, first, state.getWires());
         out.append('}');
@@ -53,9 +56,10 @@ public final class BoardStateIO {
         Map<String, Object> root = castObject(parsed);
         int version = getInt(root, "version", BoardState.CURRENT_VERSION);
         WireColor activeWireColor = parseWireColor(getString(root, "activeWireColor", WireColor.WHITE.name()));
+        List<CustomComponentDefinition> customComponents = parseCustomComponents(root.get("customComponents"));
         List<BoardState.ComponentState> components = parseComponents(root.get("components"));
         List<BoardState.WireState> wires = parseWires(root.get("wires"));
-        return new BoardState(version, activeWireColor, components, wires);
+        return new BoardState(version, activeWireColor, components, wires, customComponents);
     }
 
     /**
@@ -77,12 +81,55 @@ public final class BoardStateIO {
             appendNumberField(out, firstField, "height", component.getHeight());
             appendNumberField(out, firstField, "rotationQuarterTurns", component.getRotationQuarterTurns());
             appendStringField(out, firstField, "displayName", component.getDisplayName());
+            appendOptionalStringField(out, firstField, "customId", component.getCustomId());
             appendBooleanField(out, firstField, "showTitle", component.isShowTitle());
             appendBooleanField(out, firstField, "showValues", component.isShowValues());
             appendOptionalNumberField(out, firstField, "voltage", component.getVoltage());
             appendOptionalNumberField(out, firstField, "internalResistance", component.getInternalResistance());
             appendOptionalNumberField(out, firstField, "resistance", component.getResistance());
             appendOptionalBooleanField(out, firstField, "closed", component.getClosed());
+            out.append('}');
+        }
+        out.append(']');
+    }
+
+    /**
+     * Appends custom component definitions to the JSON output.
+     */
+    private static void appendCustomComponents(StringBuilder out, boolean[] first,
+                                               List<CustomComponentDefinition> customComponents) {
+        appendFieldStart(out, first, "customComponents");
+        out.append('[');
+        boolean[] firstItem = new boolean[] { true };
+        for (CustomComponentDefinition definition : customComponents) {
+            appendSeparator(out, firstItem);
+            out.append('{');
+            boolean[] firstField = new boolean[] { true };
+            appendStringField(out, firstField, "id", definition.getId());
+            appendStringField(out, firstField, "name", definition.getName());
+            appendPorts(out, firstField, "inputs", definition.getInputs());
+            appendPorts(out, firstField, "outputs", definition.getOutputs());
+            BoardState boardState = definition.getBoardState();
+            String boardJson = boardState == null ? "{}" : toJson(boardState);
+            appendStringField(out, firstField, "boardJson", boardJson);
+            out.append('}');
+        }
+        out.append(']');
+    }
+
+    /**
+     * Appends port definitions to a JSON array.
+     */
+    private static void appendPorts(StringBuilder out, boolean[] first, String name,
+                                    List<CustomComponentPort> ports) {
+        appendFieldStart(out, first, name);
+        out.append('[');
+        boolean[] firstItem = new boolean[] { true };
+        for (CustomComponentPort port : ports) {
+            appendSeparator(out, firstItem);
+            out.append('{');
+            boolean[] firstField = new boolean[] { true };
+            appendStringField(out, firstField, "name", port.getName());
             out.append('}');
         }
         out.append(']');
@@ -135,6 +182,7 @@ public final class BoardStateIO {
             int height = getInt(map, "height", 0);
             int rotation = getInt(map, "rotationQuarterTurns", 0);
             String displayName = getString(map, "displayName", type);
+            String customId = getString(map, "customId", null);
             boolean showTitle = getBoolean(map, "showTitle", false);
             boolean showValues = getBoolean(map, "showValues", false);
             Float voltage = getFloat(map, "voltage");
@@ -142,7 +190,52 @@ public final class BoardStateIO {
             Float resistance = getFloat(map, "resistance");
             Boolean closed = getBooleanObject(map, "closed");
             result.add(new BoardState.ComponentState(type, x, y, width, height, rotation,
-                    displayName, showTitle, showValues, voltage, internalResistance, resistance, closed));
+                    displayName, customId, showTitle, showValues, voltage, internalResistance, resistance, closed));
+        }
+        return result;
+    }
+
+    /**
+     * Parses custom component definitions from a JSON array.
+     */
+    private static List<CustomComponentDefinition> parseCustomComponents(Object raw) {
+        List<CustomComponentDefinition> result = new ArrayList<>();
+        if (!(raw instanceof List)) {
+            return result;
+        }
+        List<?> items = (List<?>) raw;
+        for (Object item : items) {
+            if (!(item instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> map = castObject(item);
+            String id = getString(map, "id", null);
+            String name = getString(map, "name", "Custom Component");
+            List<CustomComponentPort> inputs = parsePorts(map.get("inputs"), CustomComponentPort.Direction.INPUT);
+            List<CustomComponentPort> outputs = parsePorts(map.get("outputs"), CustomComponentPort.Direction.OUTPUT);
+            String boardJson = getString(map, "boardJson", "{}");
+            BoardState boardState = fromJson(boardJson);
+            result.add(new CustomComponentDefinition(id, name, inputs, outputs, boardState));
+        }
+        return result;
+    }
+
+    /**
+     * Parses port definitions from a JSON array.
+     */
+    private static List<CustomComponentPort> parsePorts(Object raw, CustomComponentPort.Direction direction) {
+        List<CustomComponentPort> result = new ArrayList<>();
+        if (!(raw instanceof List)) {
+            return result;
+        }
+        List<?> items = (List<?>) raw;
+        for (Object item : items) {
+            if (!(item instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> map = castObject(item);
+            String name = getString(map, "name", "");
+            result.add(new CustomComponentPort(name, direction));
         }
         return result;
     }
@@ -198,6 +291,17 @@ public final class BoardStateIO {
     private static void appendStringField(StringBuilder out, boolean[] first, String name, String value) {
         appendFieldStart(out, first, name);
         writeString(out, value == null ? "" : value);
+    }
+
+    /**
+     * Writes a string field when the value is present.
+     */
+    private static void appendOptionalStringField(StringBuilder out, boolean[] first, String name, String value) {
+        if (value == null) {
+            return;
+        }
+        appendFieldStart(out, first, name);
+        writeString(out, value);
     }
 
     /**

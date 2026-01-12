@@ -428,7 +428,7 @@ public abstract class CircuitComponent implements PropertyOwner {
     /**
      * Draws connection points after the component body is rendered.
      */
-    private void drawConnectionPoints(Graphics2D g2) {
+    protected void drawConnectionPoints(Graphics2D g2) {
         int dotSize = getConnectionDotSize();
         int radius = dotSize / 2;
         g2.setColor(circuitsim.ui.Colors.CONNECTION_DOT);

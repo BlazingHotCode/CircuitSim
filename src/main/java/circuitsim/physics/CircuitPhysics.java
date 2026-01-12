@@ -4,8 +4,11 @@ import circuitsim.components.Ammeter;
 import circuitsim.components.Battery;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ConnectionPoint;
+import circuitsim.components.CustomInputPort;
+import circuitsim.components.CustomOutputPort;
 import circuitsim.components.Ground;
 import circuitsim.components.Resistor;
+import circuitsim.components.Source;
 import circuitsim.components.SwitchLike;
 import circuitsim.components.Voltmeter;
 import circuitsim.components.Wire;
@@ -38,13 +41,25 @@ public final class CircuitPhysics {
      * @return true if a short circuit is detected
      */
     public static boolean update(List<CircuitComponent> components, Collection<Wire> wires) {
-        return updateInternal(components, wires);
+        return updateInternal(components, wires, false);
+    }
+
+    /**
+     * Updates computed values for the circuit.
+     *
+     * @param treatCustomOutputsAsGround true to treat custom outputs as ground (editor only)
+     * @return true if a short circuit is detected
+     */
+    public static boolean update(List<CircuitComponent> components, Collection<Wire> wires,
+                                 boolean treatCustomOutputsAsGround) {
+        return updateInternal(components, wires, treatCustomOutputsAsGround);
     }
 
     /**
      * Performs the internal solver update.
      */
-    private static boolean updateInternal(List<CircuitComponent> components, Collection<Wire> wires) {
+    private static boolean updateInternal(List<CircuitComponent> components, Collection<Wire> wires,
+                                          boolean treatCustomOutputsAsGround) {
         if (components == null || wires == null) {
             return false;
         }
@@ -72,9 +87,12 @@ public final class CircuitPhysics {
         List<Edge> edges = new ArrayList<>();
         List<Battery> batteries = new ArrayList<>();
         List<Ground> grounds = new ArrayList<>();
+        List<Ground> groundComponents = new ArrayList<>();
         List<Voltmeter> voltmeters = new ArrayList<>();
         List<SwitchLike> switches = new ArrayList<>();
-        int nodeCount = nodeIndex.size();
+        List<CustomOutputPort> outputPorts = new ArrayList<>();
+        List<CustomInputPort> inputPorts = new ArrayList<>();
+        List<Source> sources = new ArrayList<>();
         for (CircuitComponent component : components) {
             if (component instanceof Resistor) {
                 Resistor resistor = (Resistor) component;
@@ -108,6 +126,10 @@ public final class CircuitPhysics {
                 edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, ammeter));
             } else if (component instanceof Voltmeter) {
                 voltmeters.add((Voltmeter) component);
+            } else if (component instanceof CustomInputPort) {
+                inputPorts.add((CustomInputPort) component);
+            } else if (component instanceof Source) {
+                sources.add((Source) component);
             } else if (component instanceof SwitchLike) {
                 SwitchLike circuitSwitch = (SwitchLike) component;
                 switches.add(circuitSwitch);
@@ -125,8 +147,15 @@ public final class CircuitPhysics {
                         component.getConnectionPointWorldX(points.get(1)),
                         component.getConnectionPointWorldY(points.get(1)));
                 edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, circuitSwitch));
-            } else if (component instanceof Ground) {
-                grounds.add((Ground) component);
+            } else if (component instanceof CustomOutputPort) {
+                outputPorts.add((CustomOutputPort) component);
+            }
+            if (component instanceof Ground) {
+                Ground ground = (Ground) component;
+                grounds.add(ground);
+                groundComponents.add(ground);
+            } else if (component instanceof CustomOutputPort && treatCustomOutputsAsGround) {
+                grounds.add(new GroundAdapter((CustomOutputPort) component));
             }
         }
         for (Wire wire : wires) {
@@ -139,6 +168,22 @@ public final class CircuitPhysics {
                     Grid.snap(wire.getEnd().getY()));
             edges.add(new Edge(aIndex, bIndex,
                     WIRE_RESISTANCE, wire));
+        }
+        int nodeCount = nodeIndex.size();
+        java.awt.Point groundPoint = resolveGroundPoint(nodeIndex, grounds,
+                batteries.isEmpty() ? null : batteries.get(0), wires);
+        if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
+            groundPoint = getOutputPortPoint(outputPorts.get(0));
+        }
+        addInputBatteries(batteries, inputPorts, groundPoint);
+        addSourceBatteries(batteries, sources, groundPoint);
+        if (batteries.isEmpty()) {
+            resetComputedValues(edges);
+            resetVoltmeterValues(voltmeters);
+            resetSwitchValues(switches);
+            resetOutputIndicators(outputPorts);
+            resetGroundIndicators(groundComponents);
+            return false;
         }
         for (Battery battery : batteries) {
             ConnectionPoint neg = battery.getNegativePoint();
@@ -158,12 +203,6 @@ public final class CircuitPhysics {
             battery.setInternalNodeIndex(internalNode);
             battery.setPositiveNodeIndex(posIndex);
         }
-        if (batteries.isEmpty()) {
-            resetComputedValues(edges);
-            resetVoltmeterValues(voltmeters);
-            resetSwitchValues(switches);
-            return false;
-        }
 
         Battery primaryBattery = batteries.get(0);
         ConnectionPoint negative = primaryBattery.getNegativePoint();
@@ -172,13 +211,21 @@ public final class CircuitPhysics {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
+            resetOutputIndicators(outputPorts);
+            resetGroundIndicators(groundComponents);
             return false;
         }
-        Integer groundIndex = resolveGroundIndex(nodeIndex, grounds, primaryBattery);
+        groundPoint = resolveGroundPoint(nodeIndex, grounds, primaryBattery, wires);
+        if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
+            groundPoint = getOutputPortPoint(outputPorts.get(0));
+        }
+        Integer groundIndex = groundPoint == null ? null : nodeIndex.get(groundPoint);
         if (groundIndex == null || groundIndex < 0) {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
+            resetOutputIndicators(outputPorts);
+            resetGroundIndicators(groundComponents);
             return false;
         }
         int positiveIndex = getNodeIndex(nodeIndex,
@@ -190,17 +237,24 @@ public final class CircuitPhysics {
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
+            resetOutputIndicators(outputPorts);
             return false;
         }
 
+        boolean allowShortCircuit = areAllInputBatteries(batteries);
         boolean shortCircuit = detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
                 pruned.edges);
-        if (shortCircuit) {
+        if (shortCircuit && !allowShortCircuit) {
             resetComputedValues(pruned.edges);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
+            resetOutputIndicators(outputPorts);
+            resetGroundIndicators(groundComponents);
             return true;
+        }
+        if (allowShortCircuit) {
+            shortCircuit = false;
         }
 
         double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
@@ -210,9 +264,12 @@ public final class CircuitPhysics {
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
+            resetOutputIndicators(outputPorts);
+            resetGroundIndicators(groundComponents);
             return false;
         }
 
+        java.util.Set<Integer> activeNodes = new java.util.HashSet<>();
         for (Edge edge : pruned.edges) {
             int a = edge.aIndex;
             int b = edge.bIndex;
@@ -220,6 +277,10 @@ public final class CircuitPhysics {
             double vb = nodeVoltages[b];
             double voltage = va - vb;
             double current = voltage / edge.resistance;
+            if (Math.abs(current) > 0.0001) {
+                activeNodes.add(a);
+                activeNodes.add(b);
+            }
             if (edge.wire != null) {
                 edge.wire.setComputedVoltage((float) Math.abs(voltage));
                 edge.wire.setComputedAmpere((float) Math.abs(current));
@@ -238,6 +299,8 @@ public final class CircuitPhysics {
         updateVoltmeterValues(voltmeters, nodeIndex, pruned, nodeVoltages);
         resetUnusedValues(edges, wires, pruned);
         resetSwitchValues(switches);
+        updateOutputIndicators(outputPorts, nodeIndex, pruned, activeNodes);
+        updateGroundIndicators(groundComponents, nodeIndex, pruned, activeNodes);
         return false;
     }
 
@@ -307,6 +370,90 @@ public final class CircuitPhysics {
         }
     }
 
+    private static void resetOutputIndicators(List<CustomOutputPort> outputPorts) {
+        for (CustomOutputPort outputPort : outputPorts) {
+            outputPort.setActiveIndicator(false);
+        }
+    }
+
+    private static void resetGroundIndicators(List<Ground> groundComponents) {
+        for (Ground ground : groundComponents) {
+            ground.setActiveIndicator(false);
+        }
+    }
+
+    private static void updateOutputIndicators(List<CustomOutputPort> outputPorts, Map<Point, Integer> nodeIndex,
+                                               GraphView pruned, java.util.Set<Integer> activeNodes) {
+        if (outputPorts.isEmpty()) {
+            return;
+        }
+        for (CustomOutputPort outputPort : outputPorts) {
+            List<ConnectionPoint> points = outputPort.getConnectionPoints();
+            if (points.isEmpty()) {
+                outputPort.setActiveIndicator(false);
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            Integer originalIndex = nodeIndex.get(new Point(
+                    outputPort.getConnectionPointWorldX(point),
+                    outputPort.getConnectionPointWorldY(point)));
+            if (originalIndex == null) {
+                outputPort.setActiveIndicator(false);
+                continue;
+            }
+            int remapped = pruned.nodeRemap[originalIndex];
+            outputPort.setActiveIndicator(remapped >= 0 && activeNodes.contains(remapped));
+        }
+    }
+
+    private static void updateGroundIndicators(List<Ground> groundComponents, Map<Point, Integer> nodeIndex,
+                                               GraphView pruned, java.util.Set<Integer> activeNodes) {
+        if (groundComponents.isEmpty()) {
+            return;
+        }
+        for (Ground ground : groundComponents) {
+            List<ConnectionPoint> points = ground.getConnectionPoints();
+            if (points.isEmpty()) {
+                ground.setActiveIndicator(false);
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            Integer originalIndex = nodeIndex.get(new Point(
+                    ground.getConnectionPointWorldX(point),
+                    ground.getConnectionPointWorldY(point)));
+            if (originalIndex == null) {
+                ground.setActiveIndicator(false);
+                continue;
+            }
+            int remapped = pruned.nodeRemap[originalIndex];
+            ground.setActiveIndicator(remapped >= 0 && activeNodes.contains(remapped));
+        }
+    }
+
+    private static final class GroundAdapter extends Ground {
+        private final CustomOutputPort outputPort;
+
+        private GroundAdapter(CustomOutputPort outputPort) {
+            super(outputPort.getX(), outputPort.getY());
+            this.outputPort = outputPort;
+        }
+
+        @Override
+        public List<ConnectionPoint> getConnectionPoints() {
+            return outputPort.getConnectionPoints();
+        }
+
+        @Override
+        public int getConnectionPointWorldX(ConnectionPoint point) {
+            return outputPort.getConnectionPointWorldX(point);
+        }
+
+        @Override
+        public int getConnectionPointWorldY(ConnectionPoint point) {
+            return outputPort.getConnectionPointWorldY(point);
+        }
+    }
+
     /**
      * Updates voltmeters based on solved node voltages.
      */
@@ -342,22 +489,166 @@ public final class CircuitPhysics {
     /**
      * Resolves the ground node index, falling back to the battery negative terminal.
      */
-    private static Integer resolveGroundIndex(Map<Point, Integer> nodeIndex, List<Ground> grounds,
-            Battery primaryBattery) {
+    private static java.awt.Point resolveGroundPoint(Map<Point, Integer> nodeIndex, List<Ground> grounds,
+            Battery primaryBattery, Collection<Wire> wires) {
         if (grounds != null && !grounds.isEmpty()) {
-            Ground ground = grounds.get(0);
-            List<ConnectionPoint> points = ground.getConnectionPoints();
-            if (!points.isEmpty()) {
+            for (Ground ground : grounds) {
+                List<ConnectionPoint> points = ground.getConnectionPoints();
+                if (points.isEmpty()) {
+                    continue;
+                }
                 ConnectionPoint point = points.get(0);
-                return getNodeIndex(nodeIndex,
-                        ground.getConnectionPointWorldX(point),
-                        ground.getConnectionPointWorldY(point));
+                int x = ground.getConnectionPointWorldX(point);
+                int y = ground.getConnectionPointWorldY(point);
+                if (!isWireConnectedAt(wires, x, y)) {
+                    continue;
+                }
+                return new java.awt.Point(x, y);
             }
         }
+        if (primaryBattery == null) {
+            return null;
+        }
         ConnectionPoint negative = primaryBattery.getNegativePoint();
-        return getNodeIndex(nodeIndex,
-                primaryBattery.getConnectionPointWorldX(negative),
+        return new java.awt.Point(primaryBattery.getConnectionPointWorldX(negative),
                 primaryBattery.getConnectionPointWorldY(negative));
+    }
+
+    private static boolean isWireConnectedAt(Collection<Wire> wires, int x, int y) {
+        if (wires == null || wires.isEmpty()) {
+            return false;
+        }
+        for (Wire wire : wires) {
+            WireNode start = wire.getStart();
+            WireNode end = wire.getEnd();
+            if (start != null
+                    && Grid.snap(start.getX()) == x
+                    && Grid.snap(start.getY()) == y) {
+                return true;
+            }
+            if (end != null
+                    && Grid.snap(end.getX()) == x
+                    && Grid.snap(end.getY()) == y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void addInputBatteries(List<Battery> batteries, List<CustomInputPort> inputPorts,
+                                          java.awt.Point groundPoint) {
+        if (inputPorts.isEmpty() || groundPoint == null) {
+            return;
+        }
+        for (CustomInputPort inputPort : inputPorts) {
+            if (!inputPort.isActive()) {
+                continue;
+            }
+            List<ConnectionPoint> points = inputPort.getConnectionPoints();
+            if (points.isEmpty()) {
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            int posX = inputPort.getConnectionPointWorldX(point);
+            int posY = inputPort.getConnectionPointWorldY(point);
+            batteries.add(new InputBatteryAdapter(posX, posY, groundPoint.x, groundPoint.y));
+        }
+    }
+
+    private static void addSourceBatteries(List<Battery> batteries, List<Source> sources,
+                                           java.awt.Point groundPoint) {
+        if (sources.isEmpty() || groundPoint == null) {
+            return;
+        }
+        for (Source source : sources) {
+            if (!source.isActive()) {
+                continue;
+            }
+            List<ConnectionPoint> points = source.getConnectionPoints();
+            if (points.isEmpty()) {
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            int posX = source.getConnectionPointWorldX(point);
+            int posY = source.getConnectionPointWorldY(point);
+            batteries.add(new InputBatteryAdapter(posX, posY, groundPoint.x, groundPoint.y));
+        }
+    }
+
+    private static java.awt.Point getOutputPortPoint(CustomOutputPort outputPort) {
+        if (outputPort == null) {
+            return null;
+        }
+        List<ConnectionPoint> points = outputPort.getConnectionPoints();
+        if (points.isEmpty()) {
+            return null;
+        }
+        ConnectionPoint point = points.get(0);
+        return new java.awt.Point(outputPort.getConnectionPointWorldX(point),
+                outputPort.getConnectionPointWorldY(point));
+    }
+
+    private static boolean areAllInputBatteries(List<Battery> batteries) {
+        if (batteries.isEmpty()) {
+            return false;
+        }
+        for (Battery battery : batteries) {
+            if (!(battery instanceof InputBatteryAdapter)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static final class InputBatteryAdapter extends Battery {
+        private static final float INPUT_VOLTAGE = 5f;
+        private static final float INPUT_RESISTANCE = 0.2f;
+        private final ConnectionPoint negativePoint = new ConnectionPoint(this, 0f, 0f);
+        private final ConnectionPoint positivePoint = new ConnectionPoint(this, 0f, 0f);
+        private final int negX;
+        private final int negY;
+        private final int posX;
+        private final int posY;
+
+        private InputBatteryAdapter(int posX, int posY, int negX, int negY) {
+            super(0, 0, INPUT_VOLTAGE, INPUT_RESISTANCE);
+            this.posX = posX;
+            this.posY = posY;
+            this.negX = negX;
+            this.negY = negY;
+        }
+
+        @Override
+        public ConnectionPoint getNegativePoint() {
+            return negativePoint;
+        }
+
+        @Override
+        public ConnectionPoint getPositivePoint() {
+            return positivePoint;
+        }
+
+        @Override
+        public int getConnectionPointWorldX(ConnectionPoint point) {
+            if (point == positivePoint) {
+                return posX;
+            }
+            if (point == negativePoint) {
+                return negX;
+            }
+            return super.getConnectionPointWorldX(point);
+        }
+
+        @Override
+        public int getConnectionPointWorldY(ConnectionPoint point) {
+            if (point == positivePoint) {
+                return posY;
+            }
+            if (point == negativePoint) {
+                return negY;
+            }
+            return super.getConnectionPointWorldY(point);
+        }
     }
 
 

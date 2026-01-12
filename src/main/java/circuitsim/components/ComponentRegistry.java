@@ -13,7 +13,9 @@ public final class ComponentRegistry {
     private static final String DEFAULT_GROUP = "General";
 
     static {
+        ensureGroup("Custom");
         register("Sources", "Battery", (x, y) -> new Battery(x, y));
+        register("Sources", "Source", (x, y) -> new Source(x, y));
         register("Passive", "Resistor", (x, y) -> new Resistor(x, y));
         register("Meters", "Voltmeter", (x, y) -> new Voltmeter(x, y));
         register("Meters", "Ammeter", (x, y) -> new Ammeter(x, y));
@@ -42,9 +44,71 @@ public final class ComponentRegistry {
      * @param factory factory for creating components
      */
     public static void register(String groupName, String name, ComponentFactory factory) {
-        Entry entry = new Entry(groupName, name, factory);
+        Entry entry = new Entry(groupName, name, null, factory);
         ENTRIES.add(entry);
         getOrCreateGroup(groupName).entries.add(entry);
+    }
+
+    /**
+     * Registers a custom component entry under a group.
+     */
+    public static void registerCustom(String groupName, String name, String customId,
+                                      ComponentFactory factory) {
+        Entry entry = new Entry(groupName, name, customId, factory);
+        ENTRIES.add(entry);
+        getOrCreateGroup(groupName).entries.add(entry);
+    }
+
+    /**
+     * Ensures a group exists without registering entries.
+     */
+    public static void ensureGroup(String groupName) {
+        if (groupName == null || groupName.trim().isEmpty()) {
+            return;
+        }
+        getOrCreateGroup(groupName);
+    }
+
+    /**
+     * Clears all entries for the provided group name.
+     */
+    public static void clearGroup(String groupName) {
+        if (groupName == null || groupName.trim().isEmpty()) {
+            return;
+        }
+        Group group = null;
+        for (Group existing : GROUPS) {
+            if (existing.name.equals(groupName)) {
+                group = existing;
+                break;
+            }
+        }
+        if (group == null) {
+            return;
+        }
+        ENTRIES.removeIf(entry -> entry.groupName.equals(groupName));
+        group.entries.clear();
+    }
+
+    /**
+     * Removes a group and all of its entries.
+     */
+    public static void removeGroup(String groupName) {
+        if (groupName == null || groupName.trim().isEmpty()) {
+            return;
+        }
+        Group group = null;
+        for (Group existing : GROUPS) {
+            if (existing.name.equals(groupName)) {
+                group = existing;
+                break;
+            }
+        }
+        if (group == null) {
+            return;
+        }
+        ENTRIES.removeIf(entry -> entry.groupName.equals(groupName));
+        GROUPS.remove(group);
     }
 
     /**
@@ -90,11 +154,13 @@ public final class ComponentRegistry {
     public static final class Entry {
         private final String groupName;
         private final String name;
+        private final String customId;
         private final ComponentFactory factory;
 
-        private Entry(String groupName, String name, ComponentFactory factory) {
+        private Entry(String groupName, String name, String customId, ComponentFactory factory) {
             this.groupName = groupName;
             this.name = name;
+            this.customId = customId;
             this.factory = factory;
         }
 
@@ -110,6 +176,20 @@ public final class ComponentRegistry {
          */
         public String getName() {
             return name;
+        }
+
+        /**
+         * @return custom component id, or null for built-ins
+         */
+        public String getCustomId() {
+            return customId;
+        }
+
+        /**
+         * @return true if this entry represents a custom component
+         */
+        public boolean isCustom() {
+            return customId != null;
         }
 
         /**

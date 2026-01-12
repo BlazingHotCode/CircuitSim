@@ -4,11 +4,15 @@ import circuitsim.components.Ammeter;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ComponentRegistry;
 import circuitsim.components.ConnectionPoint;
+import circuitsim.components.CustomComponent;
+import circuitsim.components.CustomInputPort;
+import circuitsim.components.CustomOutputPort;
 import circuitsim.components.Switch;
 import circuitsim.components.Voltmeter;
 import circuitsim.components.Wire;
 import circuitsim.components.WireColor;
 import circuitsim.components.WireNode;
+import circuitsim.custom.CustomComponentDefinition;
 import circuitsim.io.BoardState;
 import circuitsim.io.BoardStateIO;
 import circuitsim.physics.CircuitPhysics;
@@ -24,7 +28,6 @@ import java.awt.event.KeyEvent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -113,6 +116,16 @@ public class CircuitPanel extends JPanel {
     private final Deque<BoardState> redoStack = new ArrayDeque<>();
     private boolean applyingState;
     private Runnable toggleComponentBarAction;
+    private java.util.function.Supplier<List<circuitsim.custom.CustomComponentDefinition>> customDefinitionsSupplier =
+            java.util.Collections::emptyList;
+    private java.util.function.Function<String, circuitsim.custom.CustomComponentDefinition> customDefinitionResolver =
+            id -> null;
+    private java.util.function.Function<BoardState, BoardState> boardLoadTransform = state -> state;
+    private boolean treatCustomOutputsAsGround;
+    private Runnable changeListener = () -> {};
+    private Runnable createCustomComponentAction = () -> {};
+    private java.util.function.Consumer<String> editCustomComponentAction = id -> {};
+    private java.util.function.Consumer<String> deleteCustomComponentAction = id -> {};
     private ComponentRegistry.Entry placementEntry;
     private CircuitComponent placementPreview;
     private Integer placementX;
@@ -122,6 +135,14 @@ public class CircuitPanel extends JPanel {
      * @param propertiesPanel panel used to edit component properties
      */
     public CircuitPanel(ComponentPropertiesPanel propertiesPanel) {
+        this(propertiesPanel, true);
+    }
+
+    /**
+     * @param propertiesPanel panel used to edit component properties
+     * @param enableAutosave whether to enable autosave behavior
+     */
+    public CircuitPanel(ComponentPropertiesPanel propertiesPanel, boolean enableAutosave) {
         this.propertiesPanel = propertiesPanel;
         setBackground(Colors.CANVAS_BG);
         setPreferredSize(new Dimension(800, 600));
@@ -164,6 +185,9 @@ public class CircuitPanel extends JPanel {
                     pendingWireStartAnchor = null;
                     repaint();
                     return;
+                }
+                if (!creatingWire && SwingUtilities.isLeftMouseButton(e)) {
+                    // Let normal component selection/drag flow handle inputs/sources.
                 }
                 ConnectionPoint hitPoint = findConnectionPointAt(worldX, worldY);
                 if (hitPoint != null) {
@@ -295,6 +319,20 @@ public class CircuitPanel extends JPanel {
                     CircuitComponent component = findComponentAtPoint(worldX, worldY);
                     if (component instanceof Switch) {
                         ((Switch) component).toggle();
+                        recordHistoryState();
+                        repaint();
+                    } else if (component instanceof CustomInputPort
+                            && findConnectionPointAt(worldX, worldY) == null) {
+                        CustomInputPort inputPort = (CustomInputPort) component;
+                        inputPort.setActive(!inputPort.isActive());
+                        selectComponent(inputPort);
+                        recordHistoryState();
+                        repaint();
+                    } else if (component instanceof circuitsim.components.Source
+                            && findConnectionPointAt(worldX, worldY) == null) {
+                        circuitsim.components.Source source = (circuitsim.components.Source) component;
+                        source.setActive(!source.isActive());
+                        selectComponent(source);
                         recordHistoryState();
                         repaint();
                     }
@@ -482,8 +520,12 @@ public class CircuitPanel extends JPanel {
         configureLoadKeyBindings();
         configureUndoRedoKeyBindings();
         configureComponentBarKeyBindings();
-        initializeAutosavePath();
-        attemptLoadAutosave();
+        if (enableAutosave) {
+            initializeAutosavePath();
+            attemptLoadAutosave();
+        } else {
+            autosavePath = null;
+        }
         if (undoStack.isEmpty()) {
             recordHistoryState();
         }
@@ -550,7 +592,9 @@ public class CircuitPanel extends JPanel {
      * Updates the circuit physics and renders all wires.
      */
     private void drawWires(Graphics2D g2) {
-        boolean shortCircuit = CircuitPhysics.update(components, wires);
+        SimulationView simulationView = buildSimulationView();
+        boolean shortCircuit = CircuitPhysics.update(simulationView.components, simulationView.wires,
+                treatCustomOutputsAsGround);
         if (shortCircuit != lastShortCircuit) {
             if (shortCircuit) {
                 shortCircuitPopup.showPopup();
@@ -565,8 +609,198 @@ public class CircuitPanel extends JPanel {
         lastRenderWires = buildRenderWires();
         for (RenderWire renderWire : lastRenderWires) {
             renderWire.wire.drawAt(g2, renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2);
+            drawWireEndpointStub(g2, renderWire, true);
+            drawWireEndpointStub(g2, renderWire, false);
         }
         drawWireCrossings(g2, lastRenderWires);
+    }
+
+    private void drawWireEndpointStub(Graphics2D g2, RenderWire renderWire, boolean start) {
+        int baseX = start ? renderWire.baseX1 : renderWire.baseX2;
+        int baseY = start ? renderWire.baseY1 : renderWire.baseY2;
+        int x = start ? renderWire.x1 : renderWire.x2;
+        int y = start ? renderWire.y1 : renderWire.y2;
+        if (baseX == x && baseY == y) {
+            return;
+        }
+        java.awt.Color originalColor = g2.getColor();
+        java.awt.Stroke originalStroke = g2.getStroke();
+        g2.setColor(renderWire.wire.getColor());
+        g2.setStroke(new java.awt.BasicStroke(Wire.getStrokeWidth()));
+        g2.drawLine(baseX, baseY, x, y);
+        g2.setStroke(originalStroke);
+        g2.setColor(originalColor);
+    }
+
+    private SimulationView buildSimulationView() {
+        List<CircuitComponent> simulationComponents = new ArrayList<>();
+        List<Wire> simulationWires = new ArrayList<>(wires);
+        for (CircuitComponent component : components) {
+            if (component instanceof CustomComponent) {
+                CustomComponent custom = (CustomComponent) component;
+                CustomComponentDefinition definition = custom.getDefinition();
+                if (definition == null) {
+                    continue;
+                }
+                ExpansionResult expansion = expandDefinition(definition, custom.getId(), new java.util.HashSet<>());
+                simulationComponents.addAll(expansion.components);
+                simulationWires.addAll(expansion.wires);
+                connectExternalPorts(custom, expansion, simulationWires);
+            } else {
+                simulationComponents.add(component);
+            }
+        }
+        return new SimulationView(simulationComponents, simulationWires);
+    }
+
+    private ExpansionResult expandDefinition(CustomComponentDefinition definition, long seed,
+                                             java.util.Set<String> path) {
+        ExpansionResult result = new ExpansionResult();
+        if (definition == null) {
+            return result;
+        }
+        if (path.contains(definition.getId())) {
+            return result;
+        }
+        path.add(definition.getId());
+        BoardState state = definition.getBoardState();
+        if (state == null) {
+            return result;
+        }
+        java.awt.Point offset = computeSimulationOffset(seed);
+        List<BoardState.ComponentState> componentStates = state.getComponents();
+        for (int i = 0; i < componentStates.size(); i++) {
+            BoardState.ComponentState componentState = componentStates.get(i);
+            if ("Custom".equals(componentState.getType())) {
+                CustomComponentDefinition nested = customDefinitionResolver.apply(componentState.getCustomId());
+                if (nested == null) {
+                    continue;
+                }
+                CustomComponent nestedShell = new CustomComponent(0, 0, nested);
+                applyComponentState(nestedShell, componentState);
+                nestedShell.setPosition(componentState.getX() + offset.x, componentState.getY() + offset.y);
+                long nestedSeed = (seed * 31L) + i + 1;
+                ExpansionResult nestedExpansion = expandDefinition(nested, nestedSeed,
+                        new java.util.HashSet<>(path));
+                result.components.addAll(nestedExpansion.components);
+                result.wires.addAll(nestedExpansion.wires);
+                connectPortLists(getPortPoints(nestedShell, true), nestedExpansion.inputPoints, result.wires);
+                connectPortLists(getPortPoints(nestedShell, false), nestedExpansion.outputPoints, result.wires);
+                continue;
+            }
+            CircuitComponent component = createComponentFromStateForSimulation(componentState);
+            if (component == null) {
+                continue;
+            }
+            applyComponentState(component, componentState);
+            component.setPosition(componentState.getX() + offset.x, componentState.getY() + offset.y);
+            result.components.add(component);
+            if (component instanceof CustomInputPort) {
+                result.inputPoints.add(getPrimaryConnectionPoint(component));
+            } else if (component instanceof CustomOutputPort) {
+                result.outputPoints.add(getPrimaryConnectionPoint(component));
+            }
+        }
+        for (BoardState.WireState wireState : state.getWires()) {
+            WireNode start = new WireNode(wireState.getStartX() + offset.x, wireState.getStartY() + offset.y);
+            WireNode end = new WireNode(wireState.getEndX() + offset.x, wireState.getEndY() + offset.y);
+            Wire wire = new Wire(start, end, wireState.getColor());
+            wire.setShowData(wireState.isShowData());
+            result.wires.add(wire);
+        }
+        return result;
+    }
+
+    private void connectExternalPorts(CustomComponent shell, ExpansionResult expansion, List<Wire> simWires) {
+        connectPortLists(getPortPoints(shell, true), expansion.inputPoints, simWires);
+        connectPortLists(getPortPoints(shell, false), expansion.outputPoints, simWires);
+    }
+
+    private void connectPortLists(List<java.awt.Point> externalPoints, List<java.awt.Point> internalPoints,
+                                  List<Wire> simWires) {
+        int count = Math.min(externalPoints.size(), internalPoints.size());
+        for (int i = 0; i < count; i++) {
+            java.awt.Point external = externalPoints.get(i);
+            java.awt.Point internal = internalPoints.get(i);
+            WireNode start = new WireNode(external.x, external.y);
+            WireNode end = new WireNode(internal.x, internal.y);
+            simWires.add(new Wire(start, end, WireColor.WHITE));
+        }
+    }
+
+    private List<java.awt.Point> getPortPoints(CustomComponent shell, boolean inputs) {
+        List<java.awt.Point> points = new ArrayList<>();
+        for (ConnectionPoint point : shell.getConnectionPoints()) {
+            if (inputs && shell.isInputPoint(point)) {
+                points.add(new java.awt.Point(shell.getConnectionPointWorldX(point),
+                        shell.getConnectionPointWorldY(point)));
+            } else if (!inputs && shell.isOutputPoint(point)) {
+                points.add(new java.awt.Point(shell.getConnectionPointWorldX(point),
+                        shell.getConnectionPointWorldY(point)));
+            }
+        }
+        return points;
+    }
+
+    private java.awt.Point getPrimaryConnectionPoint(CircuitComponent component) {
+        if (component.getConnectionPoints().isEmpty()) {
+            return new java.awt.Point(component.getX(), component.getY());
+        }
+        ConnectionPoint point = component.getConnectionPoints().get(0);
+        return new java.awt.Point(component.getConnectionPointWorldX(point),
+                component.getConnectionPointWorldY(point));
+    }
+
+    private java.awt.Point computeSimulationOffset(long seed) {
+        long abs = Math.abs(seed);
+        int baseX = 1_000_000 + (int) ((abs % 997) * 10_000L);
+        int baseY = 1_000_000 + (int) (((abs / 997) % 997) * 10_000L);
+        return new java.awt.Point(baseX, baseY);
+    }
+
+    private CircuitComponent createComponentFromStateForSimulation(BoardState.ComponentState state) {
+        if (state == null || state.getType() == null) {
+            return null;
+        }
+        switch (state.getType()) {
+            case "Battery":
+                return new circuitsim.components.Battery(state.getX(), state.getY());
+            case "Resistor":
+                return new circuitsim.components.Resistor(state.getX(), state.getY());
+            case "Voltmeter":
+                return new circuitsim.components.Voltmeter(state.getX(), state.getY());
+            case "Ammeter":
+                return new circuitsim.components.Ammeter(state.getX(), state.getY());
+            case "Switch":
+                return new circuitsim.components.Switch(state.getX(), state.getY());
+            case "Ground":
+                return new circuitsim.components.Ground(state.getX(), state.getY());
+            case "CustomInputPort":
+                return new CustomInputPort(state.getX(), state.getY());
+            case "CustomOutputPort":
+                return new CustomOutputPort(state.getX(), state.getY());
+            case "Source":
+                return new circuitsim.components.Source(state.getX(), state.getY());
+            default:
+                return null;
+        }
+    }
+
+    private static final class SimulationView {
+        private final List<CircuitComponent> components;
+        private final List<Wire> wires;
+
+        private SimulationView(List<CircuitComponent> components, List<Wire> wires) {
+            this.components = components;
+            this.wires = wires;
+        }
+    }
+
+    private static final class ExpansionResult {
+        private final List<CircuitComponent> components = new ArrayList<>();
+        private final List<Wire> wires = new ArrayList<>();
+        private final List<java.awt.Point> inputPoints = new ArrayList<>();
+        private final List<java.awt.Point> outputPoints = new ArrayList<>();
     }
 
     /**
@@ -843,6 +1077,183 @@ public class CircuitPanel extends JPanel {
      */
     public void setComponentBarToggle(Runnable toggleComponentBarAction) {
         this.toggleComponentBarAction = toggleComponentBarAction;
+    }
+
+    /**
+     * Toggles whether custom outputs are treated as ground (editor testing only).
+     */
+    public void setTreatCustomOutputsAsGround(boolean treatCustomOutputsAsGround) {
+        this.treatCustomOutputsAsGround = treatCustomOutputsAsGround;
+    }
+
+    /**
+     * Sets a callback for when the board state changes.
+     */
+    public void setChangeListener(Runnable changeListener) {
+        this.changeListener = changeListener == null ? () -> {} : changeListener;
+    }
+
+    /**
+     * Sets the autosave path for this panel.
+     */
+    public void setAutosavePath(Path autosavePath, boolean load) {
+        this.autosavePath = autosavePath;
+        if (this.autosavePath != null) {
+            try {
+                Files.createDirectories(this.autosavePath.getParent());
+            } catch (IOException ex) {
+                this.autosavePath = null;
+            }
+        }
+        if (load) {
+            attemptLoadAutosave();
+        }
+    }
+
+    /**
+     * Supplies custom component definitions for saves.
+     */
+    public void setCustomDefinitionsSupplier(
+            java.util.function.Supplier<List<circuitsim.custom.CustomComponentDefinition>> supplier) {
+        this.customDefinitionsSupplier = supplier == null
+                ? java.util.Collections::emptyList
+                : supplier;
+    }
+
+    /**
+     * Resolves custom component definitions by id when loading.
+     */
+    public void setCustomDefinitionResolver(
+            java.util.function.Function<String, circuitsim.custom.CustomComponentDefinition> resolver) {
+        this.customDefinitionResolver = resolver == null ? id -> null : resolver;
+    }
+
+    /**
+     * Allows callers to transform board state after loading.
+     */
+    public void setBoardLoadTransform(java.util.function.Function<BoardState, BoardState> transform) {
+        this.boardLoadTransform = transform == null ? state -> state : transform;
+    }
+
+    /**
+     * @return snapshot of the current board state
+     */
+    public BoardState exportBoardState() {
+        return buildBoardState();
+    }
+
+    /**
+     * Loads a board state into the panel.
+     */
+    public void importBoardState(BoardState state, boolean resetHistory) {
+        applyBoardState(state);
+        if (resetHistory) {
+            resetHistoryState(state);
+        } else {
+            recordHistoryState();
+        }
+    }
+
+    /**
+     * @return immutable list of current components
+     */
+    public List<CircuitComponent> getComponentsSnapshot() {
+        return java.util.Collections.unmodifiableList(new ArrayList<>(components));
+    }
+
+    /**
+     * Sets callbacks for custom component actions in the palette.
+     */
+    public void setCustomComponentHandlers(Runnable onCreate,
+                                           java.util.function.Consumer<String> onEdit,
+                                           java.util.function.Consumer<String> onDelete) {
+        this.createCustomComponentAction = onCreate == null ? () -> {} : onCreate;
+        this.editCustomComponentAction = onEdit == null ? id -> {} : onEdit;
+        this.deleteCustomComponentAction = onDelete == null ? id -> {} : onDelete;
+    }
+
+    /**
+     * Requests creation of a new custom component.
+     */
+    public void requestCreateCustomComponent() {
+        createCustomComponentAction.run();
+    }
+
+    /**
+     * Requests editing of a custom component by id.
+     */
+    public void requestEditCustomComponent(String customId) {
+        editCustomComponentAction.accept(customId);
+    }
+
+    /**
+     * Requests deletion of a custom component by id.
+     */
+    public void requestDeleteCustomComponent(String customId) {
+        deleteCustomComponentAction.accept(customId);
+    }
+
+    /**
+     * Updates existing instances of a custom component by id.
+     */
+    public void updateCustomComponentInstances(String customId,
+                                               circuitsim.custom.CustomComponentDefinition definition) {
+        if (customId == null || definition == null) {
+            return;
+        }
+        for (int i = 0; i < components.size(); i++) {
+            CircuitComponent component = components.get(i);
+            if (!(component instanceof CustomComponent)) {
+                continue;
+            }
+            CustomComponent custom = (CustomComponent) component;
+            CustomComponentDefinition existing = custom.getDefinition();
+            if (existing == null || !customId.equals(existing.getId())) {
+                continue;
+            }
+            CustomComponent replacement = new CustomComponent(custom.getX(), custom.getY(), definition);
+            replacement.setSize(replacement.getWidth(), replacement.getHeight());
+            replacement.setRotationQuarterTurns(custom.getRotationQuarterTurns());
+            components.set(i, replacement);
+            if (selectedComponents.contains(custom)) {
+                int index = selectedComponents.indexOf(custom);
+                selectedComponents.set(index, replacement);
+            }
+            if (selectedComponent == custom) {
+                selectedComponent = replacement;
+            }
+        }
+        repaint();
+    }
+
+    /**
+     * Removes all instances of a custom component by id.
+     */
+    public void removeCustomComponentInstances(String customId) {
+        if (customId == null || customId.trim().isEmpty()) {
+            return;
+        }
+        boolean removed = false;
+        for (int i = components.size() - 1; i >= 0; i--) {
+            CircuitComponent component = components.get(i);
+            if (!(component instanceof CustomComponent)) {
+                continue;
+            }
+            CustomComponent custom = (CustomComponent) component;
+            CustomComponentDefinition definition = custom.getDefinition();
+            if (definition != null && customId.equals(definition.getId())) {
+                components.remove(i);
+                selectedComponents.remove(component);
+                if (selectedComponent == component) {
+                    selectedComponent = null;
+                }
+                removed = true;
+            }
+        }
+        if (removed) {
+            recordHistoryState();
+            repaint();
+        }
     }
 
     /**
@@ -1484,6 +1895,16 @@ public class CircuitPanel extends JPanel {
         WireSplitResult splitResult = splitWireAt(endX, endY);
         WireNode endNode = splitResult == null ? getOrCreateNodeAt(endX, endY) : splitResult.node;
         Wire resolvedEndAnchor = splitResult == null ? endAnchorWire : splitResult.anchorWire;
+        if (newWireStartNode != null) {
+            if (isCustomInputConnectionAt(newWireStartNode.getX(), newWireStartNode.getY())
+                    && newWireStartNode.getWireCount() > 0) {
+                return;
+            }
+            if (endNode != null && isCustomInputConnectionAt(endNode.getX(), endNode.getY())
+                    && endNode.getWireCount() > 0) {
+                return;
+            }
+        }
         if (newWireStartNode != null && endNode != null
                 && (newWireStartNode.getX() != endNode.getX()
                 || newWireStartNode.getY() != endNode.getY())) {
@@ -1599,6 +2020,7 @@ public class CircuitPanel extends JPanel {
         try {
             String json = Files.readString(path);
             BoardState state = BoardStateIO.fromJson(json);
+            state = boardLoadTransform.apply(state);
             applyBoardState(state);
             lastBoardPath = path;
             resetHistoryState(state);
@@ -1644,7 +2066,9 @@ public class CircuitPanel extends JPanel {
                     wire.getWireColor(),
                     wire.isShowData()));
         }
-        return new BoardState(BoardState.CURRENT_VERSION, activeWireColor, componentStates, wireStates);
+        List<circuitsim.custom.CustomComponentDefinition> customComponents = customDefinitionsSupplier.get();
+        return new BoardState(BoardState.CURRENT_VERSION, activeWireColor, componentStates, wireStates,
+                customComponents);
     }
 
     /**
@@ -1669,10 +2093,21 @@ public class CircuitPanel extends JPanel {
         } else if (component instanceof circuitsim.components.Switch) {
             circuitsim.components.Switch toggle = (circuitsim.components.Switch) component;
             closed = toggle.isClosed();
+        } else if (component instanceof circuitsim.components.Source) {
+            circuitsim.components.Source source = (circuitsim.components.Source) component;
+            closed = source.isActive();
+        }
+        String customId = null;
+        if (component instanceof circuitsim.components.CustomComponent) {
+            circuitsim.components.CustomComponent custom = (circuitsim.components.CustomComponent) component;
+            if (custom.getDefinition() != null) {
+                customId = custom.getDefinition().getId();
+            }
+            type = "Custom";
         }
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
-                component.getDisplayName(), component.isShowTitle(), component.isShowingPropertyValues(),
+                component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
                 voltage, internalResistance, resistance, closed);
     }
 
@@ -1733,6 +2168,23 @@ public class CircuitPanel extends JPanel {
             case "Ground":
                 component = new circuitsim.components.Ground(state.getX(), state.getY());
                 break;
+            case "Source":
+                component = new circuitsim.components.Source(state.getX(), state.getY());
+                break;
+            case "CustomInputPort":
+                component = new circuitsim.components.CustomInputPort(state.getX(), state.getY());
+                break;
+            case "CustomOutputPort":
+                component = new circuitsim.components.CustomOutputPort(state.getX(), state.getY());
+                break;
+            case "Custom":
+                circuitsim.custom.CustomComponentDefinition definition =
+                        customDefinitionResolver.apply(state.getCustomId());
+                if (definition == null) {
+                    return null;
+                }
+                component = new circuitsim.components.CustomComponent(state.getX(), state.getY(), definition);
+                break;
             default:
                 return null;
         }
@@ -1770,6 +2222,11 @@ public class CircuitPanel extends JPanel {
             if (state.getClosed() != null) {
                 toggle.setClosed(state.getClosed());
             }
+        } else if (component instanceof circuitsim.components.Source) {
+            circuitsim.components.Source source = (circuitsim.components.Source) component;
+            if (state.getClosed() != null) {
+                source.setActive(state.getClosed());
+            }
         }
     }
 
@@ -1799,20 +2256,7 @@ public class CircuitPanel extends JPanel {
      * Initializes the autosave file location based on the OS.
      */
     private void initializeAutosavePath() {
-        String osName = System.getProperty("os.name", "").toLowerCase();
-        String userHome = System.getProperty("user.home", "");
-        Path baseDir;
-        if (osName.contains("win")) {
-            String localAppData = System.getenv("LOCALAPPDATA");
-            baseDir = localAppData == null || localAppData.isEmpty()
-                    ? Paths.get(userHome, "AppData", "Local")
-                    : Paths.get(localAppData);
-        } else if (osName.contains("mac")) {
-            baseDir = Paths.get(userHome, "Library", "Application Support");
-        } else {
-            baseDir = Paths.get(userHome, ".local", "share");
-        }
-        autosavePath = baseDir.resolve("CircuitSimData").resolve("autosave.json");
+        autosavePath = circuitsim.io.DataPaths.getAutosavePath();
         try {
             Files.createDirectories(autosavePath.getParent());
         } catch (IOException ex) {
@@ -1863,6 +2307,7 @@ public class CircuitPanel extends JPanel {
         redoStack.clear();
         trimHistory(undoStack);
         writeAutosave(state);
+        changeListener.run();
     }
 
     /**
@@ -1970,12 +2415,11 @@ public class CircuitPanel extends JPanel {
         if (wires.isEmpty()) {
             return null;
         }
-        for (Wire wire : wires) {
-            WireNode start = wire.getStart();
-            WireNode end = wire.getEnd();
-            if (distanceToSegment(mouseX, mouseY, start.getX(), start.getY(), end.getX(), end.getY())
+        List<RenderWire> renderWires = lastRenderWires.isEmpty() ? buildRenderWires() : lastRenderWires;
+        for (RenderWire renderWire : renderWires) {
+            if (distanceToSegment(mouseX, mouseY, renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2)
                     <= maxDistance) {
-                return new WireHit(wire);
+                return new WireHit(renderWire.wire);
             }
         }
         return null;
@@ -2113,6 +2557,9 @@ public class CircuitPanel extends JPanel {
         double maxDistance = 6.0;
         int endpointRadiusSq = WIRE_ENDPOINT_RADIUS * WIRE_ENDPOINT_RADIUS;
         for (Wire wire : wires) {
+            if (wire.getWireColor() != activeWireColor) {
+                continue;
+            }
             WireNode start = wire.getStart();
             WireNode end = wire.getEnd();
             if (start == null || end == null) {
@@ -2206,6 +2653,10 @@ public class CircuitPanel extends JPanel {
         private final int y1;
         private final int x2;
         private final int y2;
+        private final int baseX1;
+        private final int baseY1;
+        private final int baseX2;
+        private final int baseY2;
         private final double angle;
 
         /**
@@ -2215,12 +2666,17 @@ public class CircuitPanel extends JPanel {
          * @param x2 end X
          * @param y2 end Y
          */
-        private RenderWire(Wire wire, int x1, int y1, int x2, int y2) {
+        private RenderWire(Wire wire, int x1, int y1, int x2, int y2,
+                           int baseX1, int baseY1, int baseX2, int baseY2) {
             this.wire = wire;
             this.x1 = x1;
             this.y1 = y1;
             this.x2 = x2;
             this.y2 = y2;
+            this.baseX1 = baseX1;
+            this.baseY1 = baseY1;
+            this.baseX2 = baseX2;
+            this.baseY2 = baseY2;
             this.angle = Math.atan2(y2 - y1, x2 - x1);
         }
     }
@@ -2275,11 +2731,16 @@ public class CircuitPanel extends JPanel {
             Offset wireOffset = offsets.getOrDefault(wire, new Offset(0, 0));
             Offset startOffset = resolveEndpointOffset(wire, wire.getStart(), true, wireOffset, offsets, nodeOffsets);
             Offset endOffset = resolveEndpointOffset(wire, wire.getEnd(), false, wireOffset, offsets, nodeOffsets);
-            int startX = wire.getStart().getX() + startOffset.dx;
-            int startY = wire.getStart().getY() + startOffset.dy;
-            int endX = wire.getEnd().getX() + endOffset.dx;
-            int endY = wire.getEnd().getY() + endOffset.dy;
-            renderWires.add(new RenderWire(wire, startX, startY, endX, endY));
+            int baseStartX = wire.getStart().getX();
+            int baseStartY = wire.getStart().getY();
+            int baseEndX = wire.getEnd().getX();
+            int baseEndY = wire.getEnd().getY();
+            int startX = baseStartX + startOffset.dx;
+            int startY = baseStartY + startOffset.dy;
+            int endX = baseEndX + endOffset.dx;
+            int endY = baseEndY + endOffset.dy;
+            renderWires.add(new RenderWire(wire, startX, startY, endX, endY,
+                    baseStartX, baseStartY, baseEndX, baseEndY));
         }
         return renderWires;
     }
@@ -2554,6 +3015,9 @@ public class CircuitPanel extends JPanel {
         if (!areColinear(first, second)) {
             return false;
         }
+        if (sharesNode(first, second)) {
+            return false;
+        }
         return segmentsOverlap(first, second);
     }
 
@@ -2602,7 +3066,7 @@ public class CircuitPanel extends JPanel {
         double maxA = Math.max(0, 1);
         double minB = Math.min(t1, t2);
         double maxB = Math.max(t1, t2);
-        return maxB >= minA && minB <= maxA;
+        return maxB > minA && minB < maxA;
     }
 
     /**
@@ -2696,6 +3160,19 @@ public class CircuitPanel extends JPanel {
             }
         }
         return null;
+    }
+
+    private boolean isCustomInputConnectionAt(int x, int y) {
+        ConnectionPoint point = findConnectionPointAt(x, y);
+        if (point == null) {
+            return false;
+        }
+        CircuitComponent owner = point.getOwner();
+        if (owner instanceof circuitsim.components.CustomComponent) {
+            circuitsim.components.CustomComponent custom = (circuitsim.components.CustomComponent) owner;
+            return custom.isInputPoint(point);
+        }
+        return false;
     }
 
     /**

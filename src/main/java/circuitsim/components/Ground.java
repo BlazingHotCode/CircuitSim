@@ -11,6 +11,7 @@ public class Ground extends CircuitComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 2;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
     private static final int CONNECTION_AMOUNT = 1;
+    private boolean activeIndicator;
 
     /**
      * @param x world X coordinate
@@ -60,5 +61,16 @@ public class Ground extends CircuitComponent {
         g2.drawLine(x0 - widthMid / 2, midY, x0 + widthMid / 2, midY);
         int bottomY = midY + lineHeight / 2;
         g2.drawLine(x0 - widthBottom / 2, bottomY, x0 + widthBottom / 2, bottomY);
+        if (activeIndicator) {
+            int dotSize = Math.max(4, Math.min(width, height) / 5);
+            g2.fillOval(x0 - (dotSize / 2), bottomY + 2, dotSize, dotSize);
+        }
+    }
+
+    /**
+     * Updates the active indicator state.
+     */
+    public void setActiveIndicator(boolean activeIndicator) {
+        this.activeIndicator = activeIndicator;
     }
 }

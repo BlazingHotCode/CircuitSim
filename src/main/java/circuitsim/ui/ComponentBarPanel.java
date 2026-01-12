@@ -18,10 +18,12 @@ import java.awt.event.MouseMotionAdapter;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
 /**
@@ -88,6 +90,18 @@ public class ComponentBarPanel extends JPanel {
             groupLabels.add(label);
             add(label);
         }
+    }
+
+    /**
+     * Rebuilds the group labels from the registry.
+     */
+    public void refreshGroups() {
+        hideActiveMenu();
+        removeAll();
+        groupLabels.clear();
+        buildGroups();
+        revalidate();
+        repaint();
     }
 
     private void hideActiveMenu() {
@@ -213,10 +227,30 @@ public class ComponentBarPanel extends JPanel {
                 scheduleHide(menu, label);
             }
         });
+        if ("Custom".equals(group.getName())) {
+            menu.add(buildCustomHeader(menu));
+        }
         for (ComponentRegistry.Entry entry : group.getEntries()) {
             menu.add(new ComponentEntryPanel(entry));
         }
         return menu;
+    }
+
+    private JComponent buildCustomHeader(JPopupMenu menu) {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(Colors.COMPONENT_DROPDOWN_BG);
+        header.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+        JButton newButton = new JButton("New Custom Component");
+        newButton.setFocusPainted(false);
+        newButton.setBackground(Colors.COMPONENT_BAR_BG);
+        newButton.setForeground(Colors.COMPONENT_BAR_TEXT);
+        newButton.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+        newButton.addActionListener(event -> {
+            menu.setVisible(false);
+            circuitPanel.requestCreateCustomComponent();
+        });
+        header.add(newButton, BorderLayout.CENTER);
+        return header;
     }
 
     private class ComponentEntryPanel extends JPanel {
@@ -235,6 +269,9 @@ public class ComponentBarPanel extends JPanel {
             name.setForeground(Colors.COMPONENT_ENTRY_TEXT);
             add(preview, BorderLayout.WEST);
             add(name, BorderLayout.CENTER);
+            if (entry.isCustom()) {
+                add(buildCustomActions(entry), BorderLayout.EAST);
+            }
             setPreferredSize(new Dimension(200, ENTRY_HEIGHT));
             addMouseListener(new MouseAdapter() {
                 @Override
@@ -260,6 +297,11 @@ public class ComponentBarPanel extends JPanel {
                 @Override
                 public void mouseReleased(MouseEvent e) {
                     if (pressScreenPoint == null) {
+                        return;
+                    }
+                    if (entry.isCustom() && isClickOnAction(e.getPoint())) {
+                        pressScreenPoint = null;
+                        dragging = false;
                         return;
                     }
                     Point releasePoint = e.getLocationOnScreen();
@@ -292,6 +334,41 @@ public class ComponentBarPanel extends JPanel {
                     }
                 }
             });
+        }
+
+        private boolean isClickOnAction(Point point) {
+            Component target = getComponentAt(point);
+            if (target == null) {
+                return false;
+            }
+            return target instanceof JButton
+                    || SwingUtilities.getAncestorOfClass(JButton.class, target) != null;
+        }
+
+        private JComponent buildCustomActions(ComponentRegistry.Entry entry) {
+            JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+            panel.setOpaque(false);
+            JButton editButton = new JButton("Edit");
+            styleActionButton(editButton);
+            editButton.addActionListener(event -> {
+                circuitPanel.requestEditCustomComponent(entry.getCustomId());
+            });
+            JButton deleteButton = new JButton("Del");
+            styleActionButton(deleteButton);
+            deleteButton.addActionListener(event -> {
+                circuitPanel.requestDeleteCustomComponent(entry.getCustomId());
+            });
+            panel.add(editButton);
+            panel.add(deleteButton);
+            return panel;
+        }
+
+        private void styleActionButton(JButton button) {
+            button.setFocusPainted(false);
+            button.setBackground(Colors.COMPONENT_BAR_BG);
+            button.setForeground(Colors.COMPONENT_ENTRY_TEXT);
+            button.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+            button.setFocusable(false);
         }
     }
 
