@@ -2,6 +2,7 @@ package circuitsim.components;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Collections;
 
 public class WireNode {
     private int x;
@@ -36,5 +37,9 @@ public class WireNode {
 
     public int getWireCount() {
         return wires.size();
+    }
+
+    public Set<Wire> getWires() {
+        return Collections.unmodifiableSet(wires);
     }
 }
