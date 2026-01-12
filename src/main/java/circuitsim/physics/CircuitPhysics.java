@@ -4,9 +4,9 @@ import circuitsim.components.Ammeter;
 import circuitsim.components.Battery;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ConnectionPoint;
+import circuitsim.components.Ground;
 import circuitsim.components.Resistor;
 import circuitsim.components.SwitchLike;
-import circuitsim.components.Ground;
 import circuitsim.components.Voltmeter;
 import circuitsim.components.Wire;
 import circuitsim.components.WireNode;
@@ -18,18 +18,32 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Circuit solver that computes currents and voltages for the scene.
+ */
 public final class CircuitPhysics {
     private static final double WIRE_RESISTANCE = 1e-9;
     private static final double MIN_RESISTANCE = 1e-9;
     private static final double SHORT_THRESHOLD = 1e-6;
 
+    /**
+     * Prevent instantiation.
+     */
     private CircuitPhysics() {
     }
 
+    /**
+     * Updates computed values for the circuit.
+     *
+     * @return true if a short circuit is detected
+     */
     public static boolean update(List<CircuitComponent> components, Collection<Wire> wires) {
         return updateInternal(components, wires);
     }
 
+    /**
+     * Performs the internal solver update.
+     */
     private static boolean updateInternal(List<CircuitComponent> components, Collection<Wire> wires) {
         if (components == null || wires == null) {
             return false;
@@ -227,6 +241,9 @@ public final class CircuitPhysics {
         return false;
     }
 
+    /**
+     * Resets computed values for edges in the provided list.
+     */
     private static void resetComputedValues(List<Edge> edges) {
         for (Edge edge : edges) {
             if (edge.wire != null) {
@@ -246,6 +263,9 @@ public final class CircuitPhysics {
         }
     }
 
+    /**
+     * Resets computed values for items not included in the pruned graph.
+     */
     private static void resetUnusedValues(List<Edge> allEdges, Collection<Wire> wires, GraphView pruned) {
         for (Wire wire : wires) {
             if (!pruned.wires.contains(wire)) {
@@ -267,12 +287,18 @@ public final class CircuitPhysics {
         }
     }
 
+    /**
+     * Clears computed voltages for all voltmeters.
+     */
     private static void resetVoltmeterValues(List<Voltmeter> voltmeters) {
         for (Voltmeter voltmeter : voltmeters) {
             voltmeter.setComputedVoltage(0f);
         }
     }
 
+    /**
+     * Resets computed current for open switches.
+     */
     private static void resetSwitchValues(List<SwitchLike> switches) {
         for (SwitchLike circuitSwitch : switches) {
             if (!circuitSwitch.isClosed()) {
@@ -281,6 +307,9 @@ public final class CircuitPhysics {
         }
     }
 
+    /**
+     * Updates voltmeters based on solved node voltages.
+     */
     private static void updateVoltmeterValues(List<Voltmeter> voltmeters, Map<Point, Integer> nodeIndex,
             GraphView pruned, double[] nodeVoltages) {
         for (Voltmeter voltmeter : voltmeters) {
@@ -310,6 +339,9 @@ public final class CircuitPhysics {
         }
     }
 
+    /**
+     * Resolves the ground node index, falling back to the battery negative terminal.
+     */
     private static Integer resolveGroundIndex(Map<Point, Integer> nodeIndex, List<Ground> grounds,
             Battery primaryBattery) {
         if (grounds != null && !grounds.isEmpty()) {
@@ -329,6 +361,9 @@ public final class CircuitPhysics {
     }
 
 
+    /**
+     * Detects a short circuit via a minimal-resistance path between nodes.
+     */
     private static boolean detectShortCircuit(int start, int goal, int nodeCount, List<Edge> edges) {
         double[] dist = new double[nodeCount];
         boolean[] visited = new boolean[nodeCount];
@@ -368,6 +403,9 @@ public final class CircuitPhysics {
         return dist[goal] <= SHORT_THRESHOLD;
     }
 
+    /**
+     * Solves node voltages using modified nodal analysis.
+     */
     private static double[] solveNodeVoltages(int nodeCount, List<Edge> edges,
             List<Battery> batteries, int groundIndex) {
         int voltageSourceCount = batteries.size();
@@ -436,10 +474,16 @@ public final class CircuitPhysics {
         return voltages;
     }
 
+    /**
+     * Maps a node index to a matrix index that excludes ground.
+     */
     private static int nodeToMatrixIndex(int nodeIndex, int groundIndex) {
         return nodeIndex < groundIndex ? nodeIndex : nodeIndex - 1;
     }
 
+    /**
+     * Solves a linear system using Gaussian elimination.
+     */
     private static double[] solveLinearSystem(double[][] matrix, double[] rhs) {
         int n = rhs.length;
         double[][] a = new double[n][n];
@@ -485,6 +529,9 @@ public final class CircuitPhysics {
         return b;
     }
 
+    /**
+     * Returns the node index for a point, creating one if missing.
+     */
     private static int getNodeIndex(Map<Point, Integer> nodeIndex, int x, int y) {
         Point key = new Point(x, y);
         Integer existing = nodeIndex.get(key);
@@ -496,6 +543,9 @@ public final class CircuitPhysics {
         return index;
     }
 
+    /**
+     * Edge between two nodes, optionally tied to a component.
+     */
     private static class Edge {
         private final int aIndex;
         private final int bIndex;
@@ -505,6 +555,11 @@ public final class CircuitPhysics {
         private final Ammeter ammeter;
         private final SwitchLike circuitSwitch;
 
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         */
         private Edge(int aIndex, int bIndex, double resistance) {
             this.aIndex = aIndex;
             this.bIndex = bIndex;
@@ -515,6 +570,12 @@ public final class CircuitPhysics {
             this.circuitSwitch = null;
         }
 
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         * @param wire associated wire
+         */
         private Edge(int aIndex, int bIndex, double resistance, Wire wire) {
             this.aIndex = aIndex;
             this.bIndex = bIndex;
@@ -525,6 +586,12 @@ public final class CircuitPhysics {
             this.circuitSwitch = null;
         }
 
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         * @param resistor associated resistor
+         */
         private Edge(int aIndex, int bIndex, double resistance, Resistor resistor) {
             this.aIndex = aIndex;
             this.bIndex = bIndex;
@@ -535,6 +602,12 @@ public final class CircuitPhysics {
             this.circuitSwitch = null;
         }
 
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         * @param ammeter associated ammeter
+         */
         private Edge(int aIndex, int bIndex, double resistance, Ammeter ammeter) {
             this.aIndex = aIndex;
             this.bIndex = bIndex;
@@ -545,6 +618,12 @@ public final class CircuitPhysics {
             this.circuitSwitch = null;
         }
 
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         * @param circuitSwitch associated switch
+         */
         private Edge(int aIndex, int bIndex, double resistance, SwitchLike circuitSwitch) {
             this.aIndex = aIndex;
             this.bIndex = bIndex;
@@ -556,6 +635,9 @@ public final class CircuitPhysics {
         }
     }
 
+    /**
+     * Snapshot of a pruned graph used for solving.
+     */
     private static class GraphView {
         private final int nodeCount;
         private final int groundIndex;
@@ -568,6 +650,18 @@ public final class CircuitPhysics {
         private final java.util.Set<SwitchLike> switches;
         private final int[] nodeRemap;
 
+        /**
+         * @param nodeCount total nodes in the pruned graph
+         * @param groundIndex ground node index
+         * @param positiveIndex positive node index
+         * @param edges pruned edges
+         * @param batteries pruned batteries
+         * @param wires pruned wires
+         * @param resistors pruned resistors
+         * @param ammeters pruned ammeters
+         * @param switches pruned switches
+         * @param nodeRemap remap table from original to pruned indices
+         */
         private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
                 List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors,
                 java.util.Set<Ammeter> ammeters, java.util.Set<SwitchLike> switches, int[] nodeRemap) {
@@ -584,6 +678,9 @@ public final class CircuitPhysics {
         }
     }
 
+    /**
+     * Prunes the graph to nodes connected to ground or positive terminals.
+     */
     private static GraphView pruneToConnected(int nodeCount, List<Edge> edges, List<Battery> batteries,
             int groundIndex, int positiveIndex) {
         java.util.List<java.util.List<Integer>> adjacency = new java.util.ArrayList<>();

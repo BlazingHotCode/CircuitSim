@@ -8,6 +8,9 @@ import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Locale;
 
+/**
+ * Ammeter component that displays computed current.
+ */
 public class Ammeter extends CircuitComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 3;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
@@ -18,6 +21,10 @@ public class Ammeter extends CircuitComponent {
 
     private float computedAmpere;
 
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     */
     public Ammeter(int x, int y) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, CONNECTION_AMOUNT);
         addConnectionPoint(0f, 0.5f);
@@ -25,14 +32,23 @@ public class Ammeter extends CircuitComponent {
         addProperty(new ComputedFloatProperty("Ampere (A)", this::getComputedAmpere, false));
     }
 
+    /**
+     * @return computed current
+     */
     public float getComputedAmpere() {
         return computedAmpere;
     }
 
+    /**
+     * Sets computed current.
+     */
     public void setComputedAmpere(float computedAmpere) {
         this.computedAmpere = computedAmpere;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected void drawComponent(Graphics2D g2) {
         g2.setColor(Colors.COMPONENT_STROKE);
@@ -59,6 +75,9 @@ public class Ammeter extends CircuitComponent {
         g2.setTransform(rotatedTransform);
     }
 
+    /**
+     * Rotates a point around a center by the provided angle.
+     */
     private java.awt.Point rotatePoint(double x, double y, double centerX, double centerY, double angle) {
         double dx = x - centerX;
         double dy = y - centerY;

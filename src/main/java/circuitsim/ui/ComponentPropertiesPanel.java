@@ -14,7 +14,6 @@ import java.awt.event.MouseEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.swing.BorderFactory;
-import circuitsim.ui.Colors;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -22,13 +21,16 @@ import javax.swing.JTextField;
 import javax.swing.KeyStroke;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.text.DefaultCaret;
-import javax.swing.text.JTextComponent;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultCaret;
 import javax.swing.text.DocumentFilter;
+import javax.swing.text.JTextComponent;
 
+/**
+ * Side panel that displays and edits properties for a selected component.
+ */
 public class ComponentPropertiesPanel extends JPanel {
     private final JLabel titleLabel = new JLabel("Properties");
     private final JTextField titleEditor = new JTextField();
@@ -36,6 +38,10 @@ public class ComponentPropertiesPanel extends JPanel {
     private final Map<ComponentProperty, Component> editors = new LinkedHashMap<>();
     private PropertyOwner owner;
     private Runnable onChange = () -> {};
+
+    /**
+     * Creates the properties panel UI.
+     */
     public ComponentPropertiesPanel() {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -58,6 +64,9 @@ public class ComponentPropertiesPanel extends JPanel {
         setPreferredSize(new Dimension(220, 0));
         showNoSelection();
         titleLabel.addMouseListener(new MouseAdapter() {
+            /**
+             * Enables title editing on double click.
+             */
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
@@ -67,10 +76,16 @@ public class ComponentPropertiesPanel extends JPanel {
         });
     }
 
+    /**
+     * Sets a callback invoked when a property changes.
+     */
     public void setOnChange(Runnable onChange) {
         this.onChange = onChange == null ? () -> {} : onChange;
     }
 
+    /**
+     * Updates the selected property owner.
+     */
     public void setOwner(PropertyOwner owner) {
         this.owner = owner;
         if (owner == null || !hasEditableProperties(owner)) {
@@ -82,10 +97,16 @@ public class ComponentPropertiesPanel extends JPanel {
         rebuildForm();
     }
 
+    /**
+     * @return current property owner
+     */
     public PropertyOwner getOwner() {
         return owner;
     }
 
+    /**
+     * Displays the empty state message.
+     */
     private void showNoSelection() {
         formPanel.removeAll();
         editors.clear();
@@ -102,6 +123,9 @@ public class ComponentPropertiesPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * @return true if the owner has any editable properties
+     */
     private boolean hasEditableProperties(PropertyOwner owner) {
         if (owner == null) {
             return false;
@@ -114,6 +138,9 @@ public class ComponentPropertiesPanel extends JPanel {
         return false;
     }
 
+    /**
+     * Rebuilds the form fields for the active owner.
+     */
     private void rebuildForm() {
         if (owner == null) {
             showNoSelection();
@@ -175,6 +202,9 @@ public class ComponentPropertiesPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Creates an editor component for the provided property.
+     */
     private Component createEditor(ComponentProperty property) {
         if (!property.isEditable()) {
             return null;
@@ -221,6 +251,9 @@ public class ComponentPropertiesPanel extends JPanel {
         return null;
     }
 
+    /**
+     * Applies standard styling to text input fields.
+     */
     private void styleTextField(JTextField field) {
         field.setBackground(Colors.PROPERTIES_INPUT_BG);
         field.setForeground(Colors.PROPERTIES_TEXT);
@@ -228,6 +261,9 @@ public class ComponentPropertiesPanel extends JPanel {
         field.setBorder(BorderFactory.createLineBorder(Colors.PROPERTIES_INPUT_BORDER));
     }
 
+    /**
+     * Switches from the title label to the editable title field.
+     */
     private void beginTitleEdit() {
         if (owner == null || !owner.isTitleEditable()) {
             return;
@@ -254,6 +290,9 @@ public class ComponentPropertiesPanel extends JPanel {
         }
         titleEditor.addActionListener(event -> commitTitleEdit());
         titleEditor.addFocusListener(new java.awt.event.FocusAdapter() {
+            /**
+             * Commits edits when focus is lost.
+             */
             @Override
             public void focusLost(java.awt.event.FocusEvent e) {
                 commitTitleEdit();
@@ -268,6 +307,9 @@ public class ComponentPropertiesPanel extends JPanel {
         }));
         titleEditor.getInputMap().put(KeyStroke.getKeyStroke("ENTER"), "commitTitle");
         titleEditor.getActionMap().put("commitTitle", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 commitTitleEdit();
@@ -278,6 +320,9 @@ public class ComponentPropertiesPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Commits title edits and restores the label.
+     */
     private void commitTitleEdit() {
         if (owner != null) {
             owner.setDisplayName(titleEditor.getText());
@@ -291,36 +336,60 @@ public class ComponentPropertiesPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Document listener that invokes a single runnable on changes.
+     */
     private static class PropertyDocumentListener implements DocumentListener {
         private final Runnable onChange;
 
+        /**
+         * @param onChange callback invoked on document changes
+         */
         private PropertyDocumentListener(Runnable onChange) {
             this.onChange = onChange;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void insertUpdate(DocumentEvent e) {
             onChange.run();
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void removeUpdate(DocumentEvent e) {
             onChange.run();
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void changedUpdate(DocumentEvent e) {
             onChange.run();
         }
     }
 
+    /**
+     * Custom caret with a thicker draw width.
+     */
     private static class ThickCaret extends DefaultCaret {
         private final int caretWidth;
 
+        /**
+         * @param caretWidth width in pixels
+         */
         private ThickCaret(int caretWidth) {
             this.caretWidth = caretWidth;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         protected synchronized void damage(java.awt.Rectangle r) {
             if (r == null) {
@@ -333,6 +402,9 @@ public class ComponentPropertiesPanel extends JPanel {
             repaint();
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void paint(java.awt.Graphics g) {
             JTextComponent component = getComponent();
@@ -356,7 +428,13 @@ public class ComponentPropertiesPanel extends JPanel {
         }
     }
 
+    /**
+     * Document filter that allows numeric input with optional sign and decimal point.
+     */
     private static class NumericDocumentFilter extends DocumentFilter {
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void insertString(FilterBypass fb, int offset, String string, AttributeSet attr)
                 throws BadLocationException {
@@ -370,6 +448,9 @@ public class ComponentPropertiesPanel extends JPanel {
             }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void replace(FilterBypass fb, int offset, int length, String text, AttributeSet attrs)
                 throws BadLocationException {
@@ -380,6 +461,9 @@ public class ComponentPropertiesPanel extends JPanel {
             }
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void remove(FilterBypass fb, int offset, int length) throws BadLocationException {
             StringBuilder builder = new StringBuilder(fb.getDocument().getText(0, fb.getDocument().getLength()));
@@ -389,6 +473,9 @@ public class ComponentPropertiesPanel extends JPanel {
             }
         }
 
+        /**
+         * @return true when the text represents a valid number
+         */
         private boolean isValidNumber(String text) {
             if (text.isEmpty()) {
                 return true;

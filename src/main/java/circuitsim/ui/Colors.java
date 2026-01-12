@@ -2,6 +2,9 @@ package circuitsim.ui;
 
 import java.awt.Color;
 
+/**
+ * Centralized color palette for the UI.
+ */
 public final class Colors {
     public static final Color CANVAS_BG = new Color(30, 30, 32);
     public static final Color GRID_LINE = new Color(70, 70, 75);
@@ -25,6 +28,9 @@ public final class Colors {
     public static final Color WIRE_PALETTE_BORDER = new Color(70, 70, 80);
     public static final Color WIRE_PALETTE_SELECTED = new Color(130, 200, 255);
 
+    /**
+     * Prevent instantiation.
+     */
     private Colors() {
     }
 }

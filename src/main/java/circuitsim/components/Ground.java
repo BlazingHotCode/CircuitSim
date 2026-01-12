@@ -4,26 +4,42 @@ import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.Graphics2D;
 
+/**
+ * Ground reference component.
+ */
 public class Ground extends CircuitComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 2;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
     private static final int CONNECTION_AMOUNT = 1;
 
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     */
     public Ground(int x, int y) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, CONNECTION_AMOUNT);
         addConnectionPoint(0.5f, 0f);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected boolean includeDefaultProperties() {
         return false;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected boolean allowFullRotation() {
         return true;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected void drawComponent(Graphics2D g2) {
         g2.setColor(Colors.COMPONENT_STROKE);

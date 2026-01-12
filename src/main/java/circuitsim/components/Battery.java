@@ -1,10 +1,13 @@
 package circuitsim.components;
 
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
 
+/**
+ * Battery component with voltage and internal resistance.
+ */
 public class Battery extends CircuitComponent {
     private static final float TOP_PAD_RATIO = 0.5f;
     private static final float BOTTOM_PAD_RATIO = 1f / 3f;
@@ -20,10 +23,19 @@ public class Battery extends CircuitComponent {
     private int internalNodeIndex = -1;
     private int positiveNodeIndex = -1;
 
+    /**
+     * Creates a battery with default settings.
+     */
     public Battery(int x, int y) {
         this(x, y, DEFAULT_VOLTAGE, DEFAULT_INTERNAL_RESISTANCE);
     }
 
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     * @param voltage initial voltage
+     * @param internalResistance initial internal resistance
+     */
     public Battery(int x, int y, float voltage, float internalResistance) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, CONNECTION_AMOUNT);
         this.voltage = voltage;
@@ -35,22 +47,37 @@ public class Battery extends CircuitComponent {
                 this::getInternalResistance, this::setInternalResistance, true));
     }
 
+    /**
+     * @return battery voltage
+     */
     public float getVoltage() {
         return voltage;
     }
 
+    /**
+     * Sets the battery voltage.
+     */
     public void setVoltage(float voltage) {
         this.voltage = voltage;
     }
 
+    /**
+     * @return internal resistance
+     */
     public float getInternalResistance() {
         return internalResistance;
     }
 
+    /**
+     * Sets the internal resistance.
+     */
     public void setInternalResistance(float internalResistance) {
         this.internalResistance = internalResistance;
     }
 
+    /**
+     * @return negative terminal connection point
+     */
     public ConnectionPoint getNegativePoint() {
         if (getConnectionPoints().isEmpty()) {
             return null;
@@ -58,6 +85,9 @@ public class Battery extends CircuitComponent {
         return getConnectionPoints().get(0);
     }
 
+    /**
+     * @return positive terminal connection point
+     */
     public ConnectionPoint getPositivePoint() {
         if (getConnectionPoints().size() < 2) {
             return null;
@@ -65,22 +95,37 @@ public class Battery extends CircuitComponent {
         return getConnectionPoints().get(1);
     }
 
+    /**
+     * @return index of the internal node used by the solver
+     */
     public int getInternalNodeIndex() {
         return internalNodeIndex;
     }
 
+    /**
+     * Sets the internal node index used by the solver.
+     */
     public void setInternalNodeIndex(int internalNodeIndex) {
         this.internalNodeIndex = internalNodeIndex;
     }
 
+    /**
+     * @return index of the positive node used by the solver
+     */
     public int getPositiveNodeIndex() {
         return positiveNodeIndex;
     }
 
+    /**
+     * Sets the positive node index used by the solver.
+     */
     public void setPositiveNodeIndex(int positiveNodeIndex) {
         this.positiveNodeIndex = positiveNodeIndex;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected void drawComponent(Graphics2D g2) {
         g2.setColor(Colors.COMPONENT_STROKE);

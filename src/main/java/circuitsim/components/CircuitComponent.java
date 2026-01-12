@@ -12,6 +12,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Base class for components placed on the circuit board.
+ * Handles positioning, sizing, connection points, and drawing helpers.
+ */
 public abstract class CircuitComponent implements PropertyOwner {
     private static final AtomicLong ID_COUNTER = new AtomicLong(1);
     private static final float BASE_STROKE_WIDTH = 2f;
@@ -38,6 +42,13 @@ public abstract class CircuitComponent implements PropertyOwner {
     private String displayName;
     private int rotationQuarterTurns = 0;
 
+    /**
+     * @param x left position in pixels
+     * @param y top position in pixels
+     * @param height component height in pixels
+     * @param width component width in pixels
+     * @param connectionAmount maximum number of connection points
+     */
     protected CircuitComponent(int x, int y, int height, int width, int connectionAmount) {
         this.id = ID_COUNTER.getAndIncrement();
         this.x = x;
@@ -55,66 +66,111 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * Determines whether default visibility properties are added.
+     */
     protected boolean includeDefaultProperties() {
         return true;
     }
 
+    /**
+     * @return true if the provided point lies within this component's bounds
+     */
     public boolean contains(int pointX, int pointY) {
         return getBounds().contains(pointX, pointY);
     }
 
+    /**
+     * Updates the component's upper-left position.
+     */
     public void setPosition(int x, int y) {
         this.x = x;
         this.y = y;
     }
 
+    /**
+     * @return current X position in pixels
+     */
     public int getX() {
         return x;
     }
 
+    /**
+     * @return current Y position in pixels
+     */
     public int getY() {
         return y;
     }
 
+    /**
+     * @return current width in pixels
+     */
     public int getWidth() {
         return width;
     }
 
+    /**
+     * @return current height in pixels
+     */
     public int getHeight() {
         return height;
     }
 
+    /**
+     * Updates the component size, clamping to a minimum of 1 pixel.
+     */
     public void setSize(int width, int height) {
         this.width = Math.max(1, width);
         this.height = Math.max(1, height);
     }
 
+    /**
+     * @return unique identifier for this component
+     */
     public long getId() {
         return id;
     }
 
+    /**
+     * @return maximum number of connection points
+     */
     public int getConnectionAmount() {
         return connectionAmount;
     }
 
+    /**
+     * @return immutable list of connection points
+     */
     public List<ConnectionPoint> getConnectionPoints() {
         return Collections.unmodifiableList(connectionPoints);
     }
 
+    /**
+     * @return immutable list of properties exposed to the UI
+     */
     @Override
     public List<ComponentProperty> getProperties() {
         return Collections.unmodifiableList(properties);
     }
 
+    /**
+     * @return true when the display name can be edited
+     */
     @Override
     public boolean isTitleEditable() {
         return true;
     }
 
+    /**
+     * Adds a property entry to display and edit in the UI.
+     */
     protected void addProperty(ComponentProperty property) {
         properties.add(property);
     }
 
+    /**
+     * Adds a connection point at relative coordinates (0..1).
+     */
     protected void addConnectionPoint(float relativeX, float relativeY) {
         if (connectionPoints.size() >= connectionAmount) {
             return;
@@ -122,16 +178,25 @@ public abstract class CircuitComponent implements PropertyOwner {
         connectionPoints.add(new ConnectionPoint(this, relativeX, relativeY));
     }
 
+    /**
+     * @return snapped world-space X for a connection point
+     */
     public int getConnectionPointWorldX(ConnectionPoint point) {
         java.awt.Point rotated = getConnectionPointWorldRaw(point);
         return circuitsim.ui.Grid.snap(rotated.x);
     }
 
+    /**
+     * @return snapped world-space Y for a connection point
+     */
     public int getConnectionPointWorldY(ConnectionPoint point) {
         java.awt.Point rotated = getConnectionPointWorldRaw(point);
         return circuitsim.ui.Grid.snap(rotated.y);
     }
 
+    /**
+     * Connects the first available local point to the provided point.
+     */
     public void addConnection(ConnectionPoint point) {
         if (point == null) {
             return;
@@ -144,6 +209,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * Disconnects the provided point from this component, if present.
+     */
     public void removeConnection(ConnectionPoint point) {
         for (ConnectionPoint localPoint : connectionPoints) {
             if (localPoint.getConnectedPoints().contains(point)) {
@@ -153,6 +221,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * Disconnects all points from this component.
+     */
     public void disconnectAllConnections() {
         for (ConnectionPoint point : connectionPoints) {
             List<ConnectionPoint> connectedPoints = new ArrayList<>(point.getConnectedPoints());
@@ -163,6 +234,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * Resizes the component while preserving the original aspect ratio.
+     */
     public void resizeKeepingRatio(int targetWidth, int targetHeight) {
         float targetRatio = targetWidth / (float) targetHeight;
         if (targetRatio > aspectRatio) {
@@ -174,38 +248,86 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * @return bounding box in world coordinates
+     */
     public Rectangle getBounds() {
         return new Rectangle(x, y, width, height);
     }
 
+    /**
+     * @return diameter in pixels for connection dots
+     */
     public int getConnectionDotSize() {
         return Math.max(MIN_CONNECTION_DOT_SIZE, Math.round(Math.min(width, height) * CONNECTION_DOT_RATIO));
     }
 
+    /**
+     * @return true when property values are shown on the canvas
+     */
     public boolean isShowingPropertyValues() {
         return showPropertyValues;
     }
 
+    /**
+     * Toggles property value visibility.
+     */
     public void setShowPropertyValues(boolean showPropertyValues) {
         this.showPropertyValues = showPropertyValues;
     }
 
+    /**
+     * @return true when the component title is shown on the canvas
+     */
     public boolean isShowTitle() {
         return showTitle;
     }
 
+    /**
+     * Toggles title visibility.
+     */
     public void setShowTitle(boolean showTitle) {
         this.showTitle = showTitle;
     }
 
+    /**
+     * @return rotation in quarter turns
+     */
     public int getRotationQuarterTurns() {
         return rotationQuarterTurns;
     }
 
+    /**
+     * Sets the rotation in quarter turns, respecting component constraints.
+     *
+     * @param rotationQuarterTurns desired rotation
+     */
+    public void setRotationQuarterTurns(int rotationQuarterTurns) {
+        int normalized;
+        if (allowFullRotation()) {
+            normalized = rotationQuarterTurns % 4;
+            if (normalized < 0) {
+                normalized += 4;
+            }
+        } else {
+            normalized = rotationQuarterTurns % 2;
+            if (normalized < 0) {
+                normalized += 2;
+            }
+        }
+        this.rotationQuarterTurns = normalized;
+    }
+
+    /**
+     * @return rotation in radians derived from quarter turns
+     */
     public double getRotationRadians() {
         return Math.toRadians(rotationQuarterTurns * 90.0);
     }
 
+    /**
+     * Rotates the component by 90 degrees, preserving its center.
+     */
     public void rotate90() {
         double centerX = x + (width / 2.0);
         double centerY = y + (height / 2.0);
@@ -221,15 +343,24 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * @return true if the component can rotate in 90-degree steps (0-3).
+     */
     protected boolean allowFullRotation() {
         return false;
     }
 
+    /**
+     * @return display name shown in the UI
+     */
     @Override
     public String getDisplayName() {
         return displayName;
     }
 
+    /**
+     * Updates the display name, falling back to the class name if empty.
+     */
     @Override
     public void setDisplayName(String displayName) {
         if (displayName == null || displayName.trim().isEmpty()) {
@@ -239,6 +370,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * Draws the component, its connection points, title, and property values.
+     */
     public final void draw(Graphics g) {
         Graphics2D g2 = (Graphics2D) g;
         Stroke originalStroke = g2.getStroke();
@@ -261,6 +395,7 @@ public abstract class CircuitComponent implements PropertyOwner {
             x = (int) Math.round(centerX - (width / 2.0));
             y = (int) Math.round(centerY - (height / 2.0));
         }
+        // Draw the component with the current rotation applied.
         applyRotationTransform(g2);
         drawComponent(g2);
         g2.setTransform(originalTransform);
@@ -278,6 +413,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.setColor(originalColor);
     }
 
+    /**
+     * Rotates the graphics context around the component center.
+     */
     private void applyRotationTransform(Graphics2D g2) {
         if (rotationQuarterTurns == 0) {
             return;
@@ -287,6 +425,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.rotate(getRotationRadians(), centerX, centerY);
     }
 
+    /**
+     * Draws connection points after the component body is rendered.
+     */
     private void drawConnectionPoints(Graphics2D g2) {
         int dotSize = getConnectionDotSize();
         int radius = dotSize / 2;
@@ -298,6 +439,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         }
     }
 
+    /**
+     * Draws the component title above the component.
+     */
     private void drawTitle(Graphics2D g2) {
         if (!showTitle || displayName == null || displayName.isEmpty()) {
             return;
@@ -310,6 +454,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.setFont(originalFont);
     }
 
+    /**
+     * Draws property values under the component.
+     */
     private void drawPropertyValues(Graphics2D g2) {
         if (!showPropertyValues) {
             return;
@@ -338,6 +485,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.setFont(originalFont);
     }
 
+    /**
+     * Draws text, respecting component rotation.
+     */
     private void drawRotatedText(Graphics2D g2, String text, int textX, int textY) {
         if (rotationQuarterTurns == 0) {
             g2.drawString(text, textX, textY);
@@ -357,6 +507,9 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.setTransform(originalTransform);
     }
 
+    /**
+     * Computes the world-space position of a connection point without snapping.
+     */
     private java.awt.Point getConnectionPointWorldRaw(ConnectionPoint point) {
         double centerX = x + (width / 2.0);
         double centerY = y + (height / 2.0);
@@ -378,5 +531,8 @@ public abstract class CircuitComponent implements PropertyOwner {
                 (int) Math.round(centerY + rotatedY));
     }
 
+    /**
+     * Implemented by subclasses to paint the component body.
+     */
     protected abstract void drawComponent(Graphics2D g2);
 }

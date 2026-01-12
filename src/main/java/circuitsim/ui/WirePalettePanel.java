@@ -11,10 +11,14 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
 
+/**
+ * Palette for choosing the active wire color, with collapsible swatches.
+ */
 public class WirePalettePanel extends JPanel {
     private static final int SWATCH_SIZE = 22;
     private static final int COLLAPSED_HEIGHT = 26;
     private static final int PANEL_WIDTH = 120;
+    private static final String WIRE_COLOR_KEY = "wireColor";
     private final JPanel swatchPanel;
     private final JPanel header;
     private final JPanel footer;
@@ -23,6 +27,10 @@ public class WirePalettePanel extends JPanel {
     private boolean collapsed;
     private int expandedHeight;
 
+    /**
+     * @param initialColor starting wire color selection
+     * @param onSelect callback invoked when a new wire color is selected
+     */
     public WirePalettePanel(WireColor initialColor, Consumer<WireColor> onSelect) {
         setLayout(new BorderLayout());
         setBackground(Colors.WIRE_PALETTE_BG);
@@ -97,12 +105,15 @@ public class WirePalettePanel extends JPanel {
         setPreferredSize(new Dimension(PANEL_WIDTH, expandedHeight));
     }
 
+    /**
+     * Creates a toggle button for the provided wire color.
+     */
     private JToggleButton createSwatchButton(WireColor color) {
         JToggleButton button = new JToggleButton();
         button.setUI(new javax.swing.plaf.basic.BasicToggleButtonUI());
         button.setOpaque(true);
         button.setBackground(color.getColor());
-        button.putClientProperty("wireColor", color);
+        button.putClientProperty(WIRE_COLOR_KEY, color);
         button.setToolTipText(color.getName());
         button.setPreferredSize(new Dimension(SWATCH_SIZE, SWATCH_SIZE));
         button.setBorder(BorderFactory.createLineBorder(Colors.WIRE_PALETTE_BORDER, 2));
@@ -111,13 +122,16 @@ public class WirePalettePanel extends JPanel {
         return button;
     }
 
+    /**
+     * Updates swatch borders to reflect the current selection.
+     */
     private void updateSelectionBorders(JPanel swatchPanel) {
         for (java.awt.Component component : swatchPanel.getComponents()) {
             if (!(component instanceof JToggleButton)) {
                 continue;
             }
             JToggleButton button = (JToggleButton) component;
-            Object value = button.getClientProperty("wireColor");
+            Object value = button.getClientProperty(WIRE_COLOR_KEY);
             if (value instanceof WireColor) {
                 button.setBackground(((WireColor) value).getColor());
             }
@@ -130,6 +144,9 @@ public class WirePalettePanel extends JPanel {
         swatchPanel.repaint();
     }
 
+    /**
+     * Moves the collapse button to the header or footer based on state.
+     */
     private void updateCollapseButtonPlacement() {
         if (collapsed) {
             header.remove(collapseButton);
@@ -144,6 +161,9 @@ public class WirePalettePanel extends JPanel {
         footer.revalidate();
     }
 
+    /**
+     * Toggles the palette between collapsed and expanded states.
+     */
     private void toggleCollapse() {
         collapsed = !collapsed;
         collapseButton.setSelected(collapsed);

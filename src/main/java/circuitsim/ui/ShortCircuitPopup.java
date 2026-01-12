@@ -5,11 +5,16 @@ import java.awt.FlowLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import circuitsim.ui.Colors;
 
+/**
+ * Simple popup banner shown when a short circuit is detected.
+ */
 public class ShortCircuitPopup extends JPanel {
     private final JButton closeButton;
 
+    /**
+     * Creates the popup with a close button.
+     */
     public ShortCircuitPopup() {
         setLayout(new FlowLayout(FlowLayout.LEFT, 8, 6));
         setBackground(Colors.SHORT_POPUP_BG);
@@ -25,10 +30,16 @@ public class ShortCircuitPopup extends JPanel {
         closeButton.addActionListener(event -> hidePopup());
     }
 
+    /**
+     * Makes the popup visible.
+     */
     public void showPopup() {
         setVisible(true);
     }
 
+    /**
+     * Hides the popup.
+     */
     public void hidePopup() {
         setVisible(false);
     }

@@ -4,6 +4,9 @@ import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.Graphics2D;
 
+/**
+ * Resistor component with computed voltage and current.
+ */
 public class Resistor extends CircuitComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 4;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
@@ -14,10 +17,18 @@ public class Resistor extends CircuitComponent {
     private float computedVoltage;
     private float computedAmpere;
 
+    /**
+     * Creates a resistor with the default resistance.
+     */
     public Resistor(int x, int y) {
         this(x, y, DEFAULT_OHMS);
     }
 
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     * @param resistance initial resistance
+     */
     public Resistor(int x, int y, float resistance) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, CONNECTION_AMOUNT);
         this.resistance = resistance;
@@ -28,35 +39,59 @@ public class Resistor extends CircuitComponent {
         addProperty(new ComputedFloatProperty("Ampere (A)", this::getComputedAmpere, false));
     }
 
+    /**
+     * @return resistance in ohms
+     */
     public float getResistance() {
         return resistance;
     }
 
+    /**
+     * Sets the resistance in ohms.
+     */
     public void setResistance(float resistance) {
         this.resistance = resistance;
     }
 
+    /**
+     * @return computed voltage
+     */
     public float getComputedVoltage() {
         return computedVoltage;
     }
 
+    /**
+     * Sets computed voltage.
+     */
     public void setComputedVoltage(float computedVoltage) {
         this.computedVoltage = computedVoltage;
     }
 
+    /**
+     * @return computed current
+     */
     public float getComputedAmpere() {
         return computedAmpere;
     }
 
+    /**
+     * Sets computed current.
+     */
     public void setComputedAmpere(float computedAmpere) {
         this.computedAmpere = computedAmpere;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int getConnectionDotSize() {
         return Math.max(6, super.getConnectionDotSize());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected void drawComponent(Graphics2D g2) {
         g2.setColor(Colors.COMPONENT_STROKE);

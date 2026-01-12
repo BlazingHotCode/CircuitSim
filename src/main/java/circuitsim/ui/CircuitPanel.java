@@ -4,25 +4,31 @@ import circuitsim.components.Ammeter;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ComponentRegistry;
 import circuitsim.components.ConnectionPoint;
+import circuitsim.components.Switch;
 import circuitsim.components.Voltmeter;
-import circuitsim.components.WireNode;
 import circuitsim.components.Wire;
 import circuitsim.components.WireColor;
-import circuitsim.components.Switch;
+import circuitsim.components.WireNode;
+import circuitsim.io.BoardState;
+import circuitsim.io.BoardStateIO;
 import circuitsim.physics.CircuitPhysics;
-import circuitsim.ui.ShortCircuitPopup;
-import circuitsim.ui.Colors;
-import circuitsim.ui.Grid;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.KeyEvent;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +39,12 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
+import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
 
+/**
+ * Main canvas for circuit editing, rendering, and interaction.
+ */
 public class CircuitPanel extends JPanel {
     private final List<CircuitComponent> components = new ArrayList<>();
     private final ComponentPropertiesPanel propertiesPanel;
@@ -92,7 +103,16 @@ public class CircuitPanel extends JPanel {
     private static final double MIN_ZOOM = 0.5;
     private static final double MAX_ZOOM = 2.5;
     private static final double ZOOM_STEP = 0.1;
+    private static final int MAX_HISTORY = 200;
+    private Path lastBoardPath;
+    private Path autosavePath;
+    private final Deque<BoardState> undoStack = new ArrayDeque<>();
+    private final Deque<BoardState> redoStack = new ArrayDeque<>();
+    private boolean applyingState;
 
+    /**
+     * @param propertiesPanel panel used to edit component properties
+     */
     public CircuitPanel(ComponentPropertiesPanel propertiesPanel) {
         this.propertiesPanel = propertiesPanel;
         setBackground(Colors.CANVAS_BG);
@@ -101,6 +121,9 @@ public class CircuitPanel extends JPanel {
         setFocusable(true);
         add(shortCircuitPopup);
         MouseAdapter mouseHandler = new MouseAdapter() {
+            /**
+             * Handles selection, dragging, and wire creation on press.
+             */
             @Override
             public void mousePressed(MouseEvent e) {
                 requestFocusInWindow();
@@ -237,12 +260,16 @@ public class CircuitPanel extends JPanel {
                 repaint();
             }
 
+            /**
+             * Handles double-click removal and switch toggles.
+             */
             @Override
             public void mouseClicked(MouseEvent e) {
                 int worldX = toWorldX(e.getX());
                 int worldY = toWorldY(e.getY());
                 if (e.getClickCount() == 2) {
                     if (removeWireAt(worldX, worldY)) {
+                        recordHistoryState();
                         repaint();
                     }
                     return;
@@ -254,11 +281,15 @@ public class CircuitPanel extends JPanel {
                     CircuitComponent component = findComponentAtPoint(worldX, worldY);
                     if (component instanceof Switch) {
                         ((Switch) component).toggle();
+                        recordHistoryState();
                         repaint();
                     }
                 }
             }
 
+            /**
+             * Handles dragging for selection, wires, components, and view panning.
+             */
             @Override
             public void mouseDragged(MouseEvent e) {
                 if (!panningView && SwingUtilities.isRightMouseButton(e)) {
@@ -335,10 +366,14 @@ public class CircuitPanel extends JPanel {
                 }
             }
 
+            /**
+             * Handles drag release, selection finalize, and context menus.
+             */
             @Override
             public void mouseReleased(MouseEvent e) {
                 int worldX = toWorldX(e.getX());
                 int worldY = toWorldY(e.getY());
+                boolean didChange = false;
                 if (panningView) {
                     panningView = false;
                     if (!panMoved && (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger())) {
@@ -359,6 +394,7 @@ public class CircuitPanel extends JPanel {
                 }
                 if (draggingSelection) {
                     draggingSelection = false;
+                    didChange = true;
                     repaint();
                     return;
                 }
@@ -370,18 +406,29 @@ public class CircuitPanel extends JPanel {
                     creatingWire = false;
                     newWireStartNode = null;
                     pendingWireStartAnchor = null;
+                    didChange = true;
                     repaint();
                     return;
                 }
                 if (draggingWire != null) {
                     draggingWire = null;
+                    didChange = true;
                     repaint();
                     return;
                 }
+                if (draggedComponent != null) {
+                    didChange = true;
+                }
                 draggedComponent = null;
                 resizing = false;
+                if (didChange) {
+                    recordHistoryState();
+                }
             }
 
+            /**
+             * Updates wire preview during mouse movement.
+             */
             @Override
             public void mouseMoved(MouseEvent e) {
                 if (creatingWire) {
@@ -412,8 +459,19 @@ public class CircuitPanel extends JPanel {
         configureZoomKeyBindings();
         configureResetViewKeyBindings();
         configureClearKeyBindings();
+        configureSaveKeyBindings();
+        configureLoadKeyBindings();
+        configureUndoRedoKeyBindings();
+        initializeAutosavePath();
+        attemptLoadAutosave();
+        if (undoStack.isEmpty()) {
+            recordHistoryState();
+        }
     }
 
+    /**
+     * Paints the grid, wires, components, and selection overlays.
+     */
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -440,6 +498,9 @@ public class CircuitPanel extends JPanel {
         g2.setTransform(originalTransform);
     }
 
+    /**
+     * Draws the wire preview while creating a wire.
+     */
     private void drawWirePreview(Graphics2D g2) {
         if (!creatingWire || newWireStartNode == null) {
             return;
@@ -450,6 +511,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(originalColor);
     }
 
+    /**
+     * Updates the circuit physics and renders all wires.
+     */
     private void drawWires(Graphics2D g2) {
         boolean shortCircuit = CircuitPhysics.update(components, wires);
         if (shortCircuit != lastShortCircuit) {
@@ -470,6 +534,9 @@ public class CircuitPanel extends JPanel {
         drawWireCrossings(g2, lastRenderWires);
     }
 
+    /**
+     * @return true if the mouse is over the resize handle for the component
+     */
     private boolean isInResizeHandle(CircuitComponent component, int mouseX, int mouseY) {
         java.awt.Rectangle bounds = component.getBounds();
         int handleX = bounds.x + bounds.width - RESIZE_HANDLE_SIZE;
@@ -478,6 +545,9 @@ public class CircuitPanel extends JPanel {
                 && mouseY >= handleY && mouseY <= handleY + RESIZE_HANDLE_SIZE;
     }
 
+    /**
+     * @return true if the mouse is over the rotate handle for the component
+     */
     private boolean isInRotateHandle(CircuitComponent component, int mouseX, int mouseY) {
         java.awt.Rectangle bounds = component.getBounds();
         int handleX = bounds.x + bounds.width - ROTATE_HANDLE_SIZE;
@@ -486,6 +556,9 @@ public class CircuitPanel extends JPanel {
                 && mouseY >= handleY && mouseY <= handleY + ROTATE_HANDLE_SIZE;
     }
 
+    /**
+     * Draws a selection rectangle and optional handles for a component.
+     */
     private void drawSelection(Graphics2D g2, CircuitComponent component, boolean drawHandles) {
         java.awt.Color originalColor = g2.getColor();
         g2.setColor(Colors.SELECTION);
@@ -500,6 +573,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(originalColor);
     }
 
+    /**
+     * Draws the rotation handle for a selected component.
+     */
     private void drawRotateHandle(Graphics2D g2, java.awt.Rectangle bounds) {
         int x = bounds.x + bounds.width - ROTATE_HANDLE_SIZE;
         int y = bounds.y - ROTATE_HANDLE_SIZE;
@@ -513,6 +589,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(original);
     }
 
+    /**
+     * Highlights selected wires with a thicker overlay.
+     */
     private void drawSelectedWires(Graphics2D g2) {
         if (selectedWires.isEmpty()) {
             return;
@@ -536,6 +615,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(originalColor);
     }
 
+    /**
+     * Draws the selection marquee rectangle.
+     */
     private void drawSelectionArea(Graphics2D g2) {
         java.awt.Color original = g2.getColor();
         g2.setColor(Colors.SELECTION);
@@ -544,6 +626,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(original);
     }
 
+    /**
+     * Draws the background grid based on the current view transform.
+     */
     private void drawGrid(Graphics2D g2) {
         Color original = g2.getColor();
         g2.setColor(Colors.GRID_LINE);
@@ -564,6 +649,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(original);
     }
 
+    /**
+     * Shows a context menu based on what is under the cursor.
+     */
     private void showContextMenu(MouseEvent e, int worldX, int worldY) {
         WireHit wireHit = findWireAt(worldX, worldY);
         if (wireHit != null) {
@@ -572,11 +660,13 @@ public class CircuitPanel extends JPanel {
             JCheckBoxMenuItem showDataItem = new JCheckBoxMenuItem("Show Data", wireHit.wire.isShowData());
             showDataItem.addActionListener(event -> {
                 wireHit.wire.setShowData(showDataItem.isSelected());
+                recordHistoryState();
                 repaint();
             });
             JMenuItem deleteItem = new JMenuItem("Delete");
             deleteItem.addActionListener(event -> {
                 removeWire(wireHit.wire);
+                recordHistoryState();
                 repaint();
             });
             menu.add(showDataItem);
@@ -592,6 +682,7 @@ public class CircuitPanel extends JPanel {
                 JMenuItem item = new JMenuItem(entry.getName());
                 item.addActionListener(event -> {
                     components.add(entry.create(Grid.snap(worldX), Grid.snap(worldY)));
+                    recordHistoryState();
                     repaint();
                 });
                 addMenu.add(item);
@@ -607,12 +698,16 @@ public class CircuitPanel extends JPanel {
             component.disconnectAllConnections();
             components.remove(component);
             clearSelection();
+            recordHistoryState();
             repaint();
         });
         menu.add(deleteItem);
         menu.show(this, e.getX(), e.getY());
     }
 
+    /**
+     * Finds the topmost component at the provided point.
+     */
     private CircuitComponent findComponentAtPoint(int mouseX, int mouseY) {
         for (int i = components.size() - 1; i >= 0; i--) {
             CircuitComponent component = components.get(i);
@@ -623,6 +718,9 @@ public class CircuitPanel extends JPanel {
         return null;
     }
 
+    /**
+     * Removes a wire at the given point, if any.
+     */
     private boolean removeWireAt(int mouseX, int mouseY) {
         WireHit hit = findWireAt(mouseX, mouseY);
         if (hit == null) {
@@ -631,6 +729,9 @@ public class CircuitPanel extends JPanel {
         return removeWire(hit.wire);
     }
 
+    /**
+     * Removes a specific wire from the circuit.
+     */
     private boolean removeWire(Wire wire) {
         if (wire == null) {
             return false;
@@ -645,6 +746,9 @@ public class CircuitPanel extends JPanel {
         return true;
     }
 
+    /**
+     * Deletes the current selection of components and wires.
+     */
     private void deleteSelected() {
         if (selectedComponents.isEmpty() && selectedWires.isEmpty()) {
             return;
@@ -659,15 +763,22 @@ public class CircuitPanel extends JPanel {
             removeWire(wire);
         }
         clearSelection();
+        recordHistoryState();
         repaint();
     }
 
+    /**
+     * Binds delete/backspace to remove the selection.
+     */
     private void configureDeleteKeyBindings() {
         javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         javax.swing.ActionMap actionMap = getActionMap();
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "deleteSelection");
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), "deleteSelection");
         actionMap.put("deleteSelection", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 deleteSelected();
@@ -675,11 +786,17 @@ public class CircuitPanel extends JPanel {
         });
     }
 
+    /**
+     * Binds the rotate hotkey.
+     */
     private void configureRotateKeyBindings() {
         javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         javax.swing.ActionMap actionMap = getActionMap();
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_R, 0), "rotateSelection");
         actionMap.put("rotateSelection", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 if (!selectedComponents.isEmpty()) {
@@ -690,6 +807,9 @@ public class CircuitPanel extends JPanel {
         });
     }
 
+    /**
+     * Binds arrow keys to move the selection.
+     */
     private void configureMoveKeyBindings() {
         javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         javax.swing.ActionMap actionMap = getActionMap();
@@ -703,6 +823,9 @@ public class CircuitPanel extends JPanel {
         actionMap.put("moveSelectionDown", new MoveSelectionAction(0, Grid.SIZE));
     }
 
+    /**
+     * Binds zoom shortcuts.
+     */
     private void configureZoomKeyBindings() {
         javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         javax.swing.ActionMap actionMap = getActionMap();
@@ -713,12 +836,18 @@ public class CircuitPanel extends JPanel {
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_MINUS,
                 java.awt.event.InputEvent.CTRL_DOWN_MASK), "zoomOut");
         actionMap.put("zoomIn", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 zoomAt(getWidth() / 2, getHeight() / 2, ZOOM_STEP);
             }
         });
         actionMap.put("zoomOut", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 zoomAt(getWidth() / 2, getHeight() / 2, -ZOOM_STEP);
@@ -726,11 +855,17 @@ public class CircuitPanel extends JPanel {
         });
     }
 
+    /**
+     * Binds the reset view shortcut.
+     */
     private void configureResetViewKeyBindings() {
         javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         javax.swing.ActionMap actionMap = getActionMap();
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_F1, 0), "resetView");
         actionMap.put("resetView", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 resetView();
@@ -738,11 +873,17 @@ public class CircuitPanel extends JPanel {
         });
     }
 
+    /**
+     * Binds the clear board shortcut.
+     */
     private void configureClearKeyBindings() {
         javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
         javax.swing.ActionMap actionMap = getActionMap();
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_F2, 0), "clearBoard");
         actionMap.put("clearBoard", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 requestClearBoard();
@@ -750,6 +891,77 @@ public class CircuitPanel extends JPanel {
         });
     }
 
+    /**
+     * Binds the save shortcut.
+     */
+    private void configureSaveKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_S,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK), "saveBoard");
+        actionMap.put("saveBoard", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                saveBoardState();
+            }
+        });
+    }
+
+    /**
+     * Binds the load shortcut.
+     */
+    private void configureLoadKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_O,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK), "loadBoard");
+        actionMap.put("loadBoard", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                loadBoardState();
+            }
+        });
+    }
+
+    /**
+     * Binds undo/redo shortcuts.
+     */
+    private void configureUndoRedoKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK), "undoAction");
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK), "redoAction");
+        actionMap.put("undoAction", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                undoLastAction();
+            }
+        });
+        actionMap.put("redoAction", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                redoLastAction();
+            }
+        });
+    }
+
+    /**
+     * Resets zoom and pan to defaults.
+     */
     private void resetView() {
         zoomFactor = 1.0;
         viewOffsetX = 0;
@@ -757,24 +969,38 @@ public class CircuitPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Action that moves the current selection by a grid delta.
+     */
     private class MoveSelectionAction extends javax.swing.AbstractAction {
         private final int dx;
         private final int dy;
 
+        /**
+         * @param dx delta in X
+         * @param dy delta in Y
+         */
         private MoveSelectionAction(int dx, int dy) {
             this.dx = dx;
             this.dy = dy;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void actionPerformed(java.awt.event.ActionEvent e) {
             if (!selectedComponents.isEmpty() || !selectedWires.isEmpty()) {
                 moveSelectionBy(dx, dy);
+                recordHistoryState();
                 repaint();
             }
         }
     }
 
+    /**
+     * Selects a single component and clears other selections.
+     */
     private void selectComponent(CircuitComponent component) {
         selectedComponents.clear();
         selectedWires.clear();
@@ -787,6 +1013,9 @@ public class CircuitPanel extends JPanel {
         resetSelectionRotationState();
     }
 
+    /**
+     * Selects a single wire and clears other selections.
+     */
     private void selectWire(Wire wire) {
         selectedComponents.clear();
         selectedWires.clear();
@@ -799,6 +1028,9 @@ public class CircuitPanel extends JPanel {
         resetSelectionRotationState();
     }
 
+    /**
+     * Updates selection to include multiple components and wires.
+     */
     private void setMultiSelection(List<CircuitComponent> components, List<Wire> wires) {
         selectedComponents.clear();
         selectedComponents.addAll(components);
@@ -814,6 +1046,9 @@ public class CircuitPanel extends JPanel {
         resetSelectionRotationState();
     }
 
+    /**
+     * Toggles component selection in multi-select mode.
+     */
     private void toggleComponentSelection(CircuitComponent component) {
         if (component == null) {
             return;
@@ -834,6 +1069,9 @@ public class CircuitPanel extends JPanel {
         resetSelectionRotationState();
     }
 
+    /**
+     * Toggles wire selection in multi-select mode.
+     */
     private void toggleWireSelection(Wire wire) {
         if (wire == null) {
             return;
@@ -854,6 +1092,9 @@ public class CircuitPanel extends JPanel {
         resetSelectionRotationState();
     }
 
+    /**
+     * Clears all selection state.
+     */
     private void clearSelection() {
         selectedComponents.clear();
         selectedWires.clear();
@@ -863,6 +1104,9 @@ public class CircuitPanel extends JPanel {
         resetSelectionRotationState();
     }
 
+    /**
+     * Updates the properties panel with the current selection.
+     */
     private void updatePropertiesPanel() {
         if (selectedComponents.size() == 1 && selectedWires.isEmpty()) {
             CircuitComponent component = selectedComponents.get(0);
@@ -876,10 +1120,16 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * @return true if more than one item is selected
+     */
     private boolean isMultiSelection() {
         return selectedComponents.size() + selectedWires.size() > 1;
     }
 
+    /**
+     * Begins dragging a multi-selection.
+     */
     private void beginSelectionDrag(int worldX, int worldY) {
         draggingSelection = true;
         selectionDragStartX = Grid.snap(worldX);
@@ -892,6 +1142,9 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Drags the selection to a new snapped position.
+     */
     private void dragSelectionTo(int mouseX, int mouseY) {
         int snappedX = Grid.snap(mouseX);
         int snappedY = Grid.snap(mouseY);
@@ -906,6 +1159,9 @@ public class CircuitPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Moves selected components and wires by the provided delta.
+     */
     private void moveSelectionBy(int dx, int dy) {
         for (CircuitComponent component : selectedComponents) {
             component.setPosition(component.getX() + dx, component.getY() + dy);
@@ -915,6 +1171,9 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Rotates the entire selection around its bounding box center.
+     */
     private void rotateSelectionGroup() {
         if (selectedComponents.isEmpty() && selectedWires.isEmpty()) {
             return;
@@ -938,8 +1197,12 @@ public class CircuitPanel extends JPanel {
         for (WireNode node : nodesToRotate) {
             rotateWireNodeAround(node, centerX, centerY);
         }
+        recordHistoryState();
     }
 
+    /**
+     * Computes the bounding box of the current selection.
+     */
     private java.awt.Rectangle getSelectionBounds() {
         boolean hasSelection = false;
         int minX = Integer.MAX_VALUE;
@@ -974,6 +1237,9 @@ public class CircuitPanel extends JPanel {
         return new java.awt.Rectangle(minX, minY, maxX - minX, maxY - minY);
     }
 
+    /**
+     * Prepares wire nodes for rotation by detaching shared nodes.
+     */
     private Set<WireNode> prepareWireNodesForRotation() {
         Set<WireNode> nodesToRotate = new HashSet<>();
         if (selectedWires.isEmpty()) {
@@ -1002,6 +1268,9 @@ public class CircuitPanel extends JPanel {
         return nodesToRotate;
     }
 
+    /**
+     * Resolves a node to rotate, cloning it if it is shared with unselected wires.
+     */
     private WireNode resolveRotationNode(WireNode node, Set<Wire> selectedWireSet,
             Map<WireNode, WireNode> detachedNodes) {
         boolean hasUnselected = false;
@@ -1022,6 +1291,9 @@ public class CircuitPanel extends JPanel {
         return replacement;
     }
 
+    /**
+     * Rotates a component around a center point and optionally rotates its orientation.
+     */
     private void rotateComponentAround(CircuitComponent component, double centerX, double centerY,
             boolean rotateComponent) {
         double componentCenterX = component.getX() + (component.getWidth() / 2.0);
@@ -1036,12 +1308,18 @@ public class CircuitPanel extends JPanel {
         component.setPosition(newX, newY);
     }
 
+    /**
+     * Rotates a wire node around a center point.
+     */
     private void rotateWireNodeAround(WireNode node, double centerX, double centerY) {
         double rotatedX = centerX - (node.getY() - centerY);
         double rotatedY = centerY + (node.getX() - centerX);
         node.setPosition(Grid.snap((int) Math.round(rotatedX)), Grid.snap((int) Math.round(rotatedY)));
     }
 
+    /**
+     * Creates and adds a new wire once the user completes placement.
+     */
     private void finalizeWire(int endX, int endY, Wire endAnchorWire) {
         WireSplitResult splitResult = splitWireAt(endX, endY);
         WireNode endNode = splitResult == null ? getOrCreateNodeAt(endX, endY) : splitResult.node;
@@ -1060,6 +1338,9 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Resets rotation tracking for the current selection.
+     */
     private void resetSelectionRotationState() {
         selectionRotationTurns = 0;
         selectionBaseRotations.clear();
@@ -1068,14 +1349,27 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Updates the active wire color for new wires.
+     */
     public void setActiveWireColor(WireColor color) {
-        this.activeWireColor = color == null ? WireColor.WHITE : color;
+        WireColor next = color == null ? WireColor.WHITE : color;
+        if (this.activeWireColor != next) {
+            this.activeWireColor = next;
+            recordHistoryState();
+        }
     }
 
+    /**
+     * @return active wire color for new wires
+     */
     public WireColor getActiveWireColor() {
         return activeWireColor;
     }
 
+    /**
+     * Shows a confirmation popup for clearing the board.
+     */
     public void requestClearBoard() {
         if (clearPopup != null && clearPopup.isVisible()) {
             clearPopup.setVisible(false);
@@ -1099,6 +1393,371 @@ public class CircuitPanel extends JPanel {
         clearPopup.show(this, popupX, popupY);
     }
 
+    /**
+     * Records a history state after a property change.
+     */
+    public void handlePropertyChange() {
+        recordHistoryState();
+    }
+
+    /**
+     * Saves the current board state to a JSON file.
+     */
+    private void saveBoardState() {
+        JFileChooser chooser = new JFileChooser();
+        if (lastBoardPath != null) {
+            chooser.setSelectedFile(lastBoardPath.toFile());
+        }
+        int result = chooser.showSaveDialog(this);
+        if (result != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        Path selected = chooser.getSelectedFile().toPath();
+        Path path = ensureJsonExtension(selected);
+        BoardState state = buildBoardState();
+        try {
+            Files.writeString(path, BoardStateIO.toJson(state));
+            lastBoardPath = path;
+        } catch (IOException ex) {
+            showError("Failed to save board state.", ex);
+        }
+    }
+
+    /**
+     * Loads a board state from a JSON file.
+     */
+    private void loadBoardState() {
+        JFileChooser chooser = new JFileChooser();
+        if (lastBoardPath != null) {
+            chooser.setSelectedFile(lastBoardPath.toFile());
+        }
+        int result = chooser.showOpenDialog(this);
+        if (result != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        Path path = chooser.getSelectedFile().toPath();
+        try {
+            String json = Files.readString(path);
+            BoardState state = BoardStateIO.fromJson(json);
+            applyBoardState(state);
+            lastBoardPath = path;
+            resetHistoryState(state);
+        } catch (IOException ex) {
+            showError("Failed to load board state.", ex);
+        } catch (RuntimeException ex) {
+            showError("Invalid board state file.", ex);
+        }
+    }
+
+    /**
+     * Ensures the selected file path ends with .json.
+     */
+    private Path ensureJsonExtension(Path selected) {
+        String name = selected.getFileName().toString();
+        if (name.toLowerCase().endsWith(".json")) {
+            return selected;
+        }
+        return selected.resolveSibling(name + ".json");
+    }
+
+    /**
+     * Builds a serializable snapshot of the board state.
+     */
+    private BoardState buildBoardState() {
+        List<BoardState.ComponentState> componentStates = new ArrayList<>();
+        for (CircuitComponent component : components) {
+            BoardState.ComponentState state = buildComponentState(component);
+            if (state != null) {
+                componentStates.add(state);
+            }
+        }
+        List<BoardState.WireState> wireStates = new ArrayList<>();
+        for (Wire wire : wires) {
+            if (wire.getStart() == null || wire.getEnd() == null) {
+                continue;
+            }
+            wireStates.add(new BoardState.WireState(
+                    wire.getStart().getX(),
+                    wire.getStart().getY(),
+                    wire.getEnd().getX(),
+                    wire.getEnd().getY(),
+                    wire.getWireColor(),
+                    wire.isShowData()));
+        }
+        return new BoardState(BoardState.CURRENT_VERSION, activeWireColor, componentStates, wireStates);
+    }
+
+    /**
+     * Builds a component state for serialization.
+     */
+    private BoardState.ComponentState buildComponentState(CircuitComponent component) {
+        if (component == null) {
+            return null;
+        }
+        String type = component.getClass().getSimpleName();
+        Float voltage = null;
+        Float internalResistance = null;
+        Float resistance = null;
+        Boolean closed = null;
+        if (component instanceof circuitsim.components.Battery) {
+            circuitsim.components.Battery battery = (circuitsim.components.Battery) component;
+            voltage = battery.getVoltage();
+            internalResistance = battery.getInternalResistance();
+        } else if (component instanceof circuitsim.components.Resistor) {
+            circuitsim.components.Resistor resistor = (circuitsim.components.Resistor) component;
+            resistance = resistor.getResistance();
+        } else if (component instanceof circuitsim.components.Switch) {
+            circuitsim.components.Switch toggle = (circuitsim.components.Switch) component;
+            closed = toggle.isClosed();
+        }
+        return new BoardState.ComponentState(type, component.getX(), component.getY(),
+                component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
+                component.getDisplayName(), component.isShowTitle(), component.isShowingPropertyValues(),
+                voltage, internalResistance, resistance, closed);
+    }
+
+    /**
+     * Applies a board state to the current scene.
+     */
+    private void applyBoardState(BoardState state) {
+        applyingState = true;
+        clearBoard();
+        if (state == null) {
+            applyingState = false;
+            return;
+        }
+        setActiveWireColor(state.getActiveWireColor());
+        for (BoardState.ComponentState componentState : state.getComponents()) {
+            CircuitComponent component = createComponentFromState(componentState);
+            if (component != null) {
+                components.add(component);
+            }
+        }
+        Map<Point, WireNode> nodeCache = new HashMap<>();
+        for (BoardState.WireState wireState : state.getWires()) {
+            WireNode start = getOrCreateWireNode(nodeCache, wireState.getStartX(), wireState.getStartY());
+            WireNode end = getOrCreateWireNode(nodeCache, wireState.getEndX(), wireState.getEndY());
+            Wire wire = new Wire(start, end, wireState.getColor());
+            wire.setShowData(wireState.isShowData());
+            wires.add(wire);
+        }
+        clearSelection();
+        applyingState = false;
+        repaint();
+    }
+
+    /**
+     * Creates a component instance based on a serialized state.
+     */
+    private CircuitComponent createComponentFromState(BoardState.ComponentState state) {
+        if (state == null || state.getType() == null) {
+            return null;
+        }
+        CircuitComponent component;
+        switch (state.getType()) {
+            case "Battery":
+                component = new circuitsim.components.Battery(state.getX(), state.getY());
+                break;
+            case "Resistor":
+                component = new circuitsim.components.Resistor(state.getX(), state.getY());
+                break;
+            case "Voltmeter":
+                component = new circuitsim.components.Voltmeter(state.getX(), state.getY());
+                break;
+            case "Ammeter":
+                component = new circuitsim.components.Ammeter(state.getX(), state.getY());
+                break;
+            case "Switch":
+                component = new circuitsim.components.Switch(state.getX(), state.getY());
+                break;
+            case "Ground":
+                component = new circuitsim.components.Ground(state.getX(), state.getY());
+                break;
+            default:
+                return null;
+        }
+        applyComponentState(component, state);
+        return component;
+    }
+
+    /**
+     * Applies serialized values to a component instance.
+     */
+    private void applyComponentState(CircuitComponent component, BoardState.ComponentState state) {
+        component.setPosition(state.getX(), state.getY());
+        if (state.getWidth() > 0 && state.getHeight() > 0) {
+            component.setSize(state.getWidth(), state.getHeight());
+        }
+        component.setRotationQuarterTurns(state.getRotationQuarterTurns());
+        component.setDisplayName(state.getDisplayName());
+        component.setShowTitle(state.isShowTitle());
+        component.setShowPropertyValues(state.isShowValues());
+        if (component instanceof circuitsim.components.Battery) {
+            circuitsim.components.Battery battery = (circuitsim.components.Battery) component;
+            if (state.getVoltage() != null) {
+                battery.setVoltage(state.getVoltage());
+            }
+            if (state.getInternalResistance() != null) {
+                battery.setInternalResistance(state.getInternalResistance());
+            }
+        } else if (component instanceof circuitsim.components.Resistor) {
+            circuitsim.components.Resistor resistor = (circuitsim.components.Resistor) component;
+            if (state.getResistance() != null) {
+                resistor.setResistance(state.getResistance());
+            }
+        } else if (component instanceof circuitsim.components.Switch) {
+            circuitsim.components.Switch toggle = (circuitsim.components.Switch) component;
+            if (state.getClosed() != null) {
+                toggle.setClosed(state.getClosed());
+            }
+        }
+    }
+
+    /**
+     * Reuses wire nodes to preserve shared endpoints while loading.
+     */
+    private WireNode getOrCreateWireNode(Map<Point, WireNode> cache, int x, int y) {
+        Point key = new Point(x, y);
+        WireNode node = cache.get(key);
+        if (node == null) {
+            node = new WireNode(x, y);
+            cache.put(key, node);
+        }
+        return node;
+    }
+
+    /**
+     * Shows an error dialog.
+     */
+    private void showError(String message, Exception ex) {
+        String detail = ex.getMessage();
+        String fullMessage = detail == null ? message : message + " " + detail;
+        JOptionPane.showMessageDialog(this, fullMessage, "CircuitSim", JOptionPane.ERROR_MESSAGE);
+    }
+
+    /**
+     * Initializes the autosave file location based on the OS.
+     */
+    private void initializeAutosavePath() {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        String userHome = System.getProperty("user.home", "");
+        Path baseDir;
+        if (osName.contains("win")) {
+            String localAppData = System.getenv("LOCALAPPDATA");
+            baseDir = localAppData == null || localAppData.isEmpty()
+                    ? Paths.get(userHome, "AppData", "Local")
+                    : Paths.get(localAppData);
+        } else if (osName.contains("mac")) {
+            baseDir = Paths.get(userHome, "Library", "Application Support");
+        } else {
+            baseDir = Paths.get(userHome, ".local", "share");
+        }
+        autosavePath = baseDir.resolve("CircuitSimData").resolve("autosave.json");
+        try {
+            Files.createDirectories(autosavePath.getParent());
+        } catch (IOException ex) {
+            autosavePath = null;
+        }
+    }
+
+    /**
+     * Loads an autosaved board state if present.
+     */
+    private void attemptLoadAutosave() {
+        if (autosavePath == null || !Files.exists(autosavePath)) {
+            return;
+        }
+        try {
+            String json = Files.readString(autosavePath);
+            BoardState state = BoardStateIO.fromJson(json);
+            applyBoardState(state);
+            resetHistoryState(state);
+        } catch (IOException | RuntimeException ignored) {
+            // Autosave is best-effort; ignore failures.
+        }
+    }
+
+    /**
+     * Writes the autosave file to disk.
+     */
+    private void writeAutosave(BoardState state) {
+        if (autosavePath == null) {
+            return;
+        }
+        try {
+            Files.writeString(autosavePath, BoardStateIO.toJson(state));
+        } catch (IOException ignored) {
+            // Autosave is best-effort; ignore failures.
+        }
+    }
+
+    /**
+     * Captures the current state for undo history and autosave.
+     */
+    private void recordHistoryState() {
+        if (applyingState) {
+            return;
+        }
+        BoardState state = buildBoardState();
+        undoStack.push(state);
+        redoStack.clear();
+        trimHistory(undoStack);
+        writeAutosave(state);
+    }
+
+    /**
+     * Resets history stacks to the provided state.
+     */
+    private void resetHistoryState(BoardState state) {
+        undoStack.clear();
+        redoStack.clear();
+        if (state != null) {
+            undoStack.push(state);
+            trimHistory(undoStack);
+        }
+        writeAutosave(state);
+    }
+
+    /**
+     * Undoes the last action and stores the current state for redo.
+     */
+    private void undoLastAction() {
+        if (undoStack.size() < 2) {
+            return;
+        }
+        BoardState current = undoStack.pop();
+        redoStack.push(current);
+        BoardState previous = undoStack.peek();
+        applyBoardState(previous);
+        writeAutosave(previous);
+    }
+
+    /**
+     * Redoes the last undone action.
+     */
+    private void redoLastAction() {
+        if (redoStack.isEmpty()) {
+            return;
+        }
+        BoardState next = redoStack.pop();
+        undoStack.push(next);
+        trimHistory(undoStack);
+        applyBoardState(next);
+        writeAutosave(next);
+    }
+
+    /**
+     * Ensures the history stack does not exceed the configured limit.
+     */
+    private void trimHistory(Deque<BoardState> stack) {
+        while (stack.size() > MAX_HISTORY) {
+            stack.removeLast();
+        }
+    }
+
+    /**
+     * Clears all components and wires from the board.
+     */
     private void clearBoard() {
         for (CircuitComponent component : new ArrayList<>(components)) {
             component.disconnectAllConnections();
@@ -1109,9 +1768,13 @@ public class CircuitPanel extends JPanel {
         }
         wires.clear();
         clearSelection();
+        recordHistoryState();
         repaint();
     }
 
+    /**
+     * Zooms in or out around the provided screen coordinate.
+     */
     private void zoomAt(int screenX, int screenY, double delta) {
         double nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomFactor + delta));
         if (Math.abs(nextZoom - zoomFactor) < 0.0001) {
@@ -1125,14 +1788,23 @@ public class CircuitPanel extends JPanel {
         repaint();
     }
 
+    /**
+     * Converts a screen X coordinate to world space.
+     */
     private int toWorldX(int screenX) {
         return (int) Math.round((screenX - viewOffsetX) / zoomFactor);
     }
 
+    /**
+     * Converts a screen Y coordinate to world space.
+     */
     private int toWorldY(int screenY) {
         return (int) Math.round((screenY - viewOffsetY) / zoomFactor);
     }
 
+    /**
+     * Finds a wire near the provided point.
+     */
     private WireHit findWireAt(int mouseX, int mouseY) {
         double maxDistance = 6.0;
         if (wires.isEmpty()) {
@@ -1149,6 +1821,9 @@ public class CircuitPanel extends JPanel {
         return null;
     }
 
+    /**
+     * Updates the selection based on the current drag area.
+     */
     private void updateSelectionFromArea() {
         java.awt.Rectangle area = getSelectionRectangle();
         if (area.width == 0 && area.height == 0) {
@@ -1170,6 +1845,9 @@ public class CircuitPanel extends JPanel {
         setMultiSelection(areaComponents, areaWires);
     }
 
+    /**
+     * @return selection marquee rectangle in world coordinates
+     */
     private java.awt.Rectangle getSelectionRectangle() {
         int x = Math.min(selectionStartX, selectionEndX);
         int y = Math.min(selectionStartY, selectionEndY);
@@ -1178,6 +1856,9 @@ public class CircuitPanel extends JPanel {
         return new java.awt.Rectangle(x, y, width, height);
     }
 
+    /**
+     * @return true when a wire intersects the selection rectangle
+     */
     private boolean wireIntersectsArea(Wire wire, java.awt.Rectangle area) {
         if (wire == null || wire.getStart() == null || wire.getEnd() == null) {
             return false;
@@ -1193,6 +1874,9 @@ public class CircuitPanel extends JPanel {
         return area.intersectsLine(line);
     }
 
+    /**
+     * Finds a wire endpoint at the provided point.
+     */
     private WireEndpointHit findWireEndpointAt(int mouseX, int mouseY) {
         int radiusSq = WIRE_ENDPOINT_RADIUS * WIRE_ENDPOINT_RADIUS;
         for (Wire wire : wires) {
@@ -1216,6 +1900,9 @@ public class CircuitPanel extends JPanel {
         return null;
     }
 
+    /**
+     * Returns an existing node at the position or creates a new one.
+     */
     private WireNode getOrCreateNodeAt(int x, int y) {
         for (Wire wire : wires) {
             WireNode start = wire.getStart();
@@ -1230,6 +1917,9 @@ public class CircuitPanel extends JPanel {
         return new WireNode(x, y);
     }
 
+    /**
+     * Splits a wire that passes through the provided point.
+     */
     private WireSplitResult splitWireAt(int x, int y) {
         int snappedX = Grid.snap(x);
         int snappedY = Grid.snap(y);
@@ -1256,6 +1946,9 @@ public class CircuitPanel extends JPanel {
         return new WireSplitResult(splitNode, first);
     }
 
+    /**
+     * Finds a wire eligible for splitting at the provided point.
+     */
     private Wire findWireForSplit(int x, int y) {
         double maxDistance = 6.0;
         int endpointRadiusSq = WIRE_ENDPOINT_RADIUS * WIRE_ENDPOINT_RADIUS;
@@ -1280,6 +1973,9 @@ public class CircuitPanel extends JPanel {
         return null;
     }
 
+    /**
+     * Ensures wire endpoints are unique when dragging a wire.
+     */
     private void detachSharedEndpoints(Wire wire) {
         WireNode start = wire.getStart();
         WireNode end = wire.getEnd();
@@ -1293,34 +1989,57 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Hit result for a wire segment.
+     */
     private static class WireHit {
         private final Wire wire;
 
+        /**
+         * @param wire hit wire
+         */
         private WireHit(Wire wire) {
             this.wire = wire;
         }
     }
 
+    /**
+     * Hit result for a wire endpoint.
+     */
     private static class WireEndpointHit {
         private final Wire wire;
         private final WireNode node;
 
+        /**
+         * @param wire hit wire
+         * @param node hit endpoint node
+         */
         private WireEndpointHit(Wire wire, WireNode node) {
             this.wire = wire;
             this.node = node;
         }
     }
 
+    /**
+     * Result of splitting a wire, including the new node and anchor.
+     */
     private static class WireSplitResult {
         private final WireNode node;
         private final Wire anchorWire;
 
+        /**
+         * @param node split node
+         * @param anchorWire original anchor wire
+         */
         private WireSplitResult(WireNode node, Wire anchorWire) {
             this.node = node;
             this.anchorWire = anchorWire;
         }
     }
 
+    /**
+     * Wire render metadata with precomputed angle.
+     */
     private static class RenderWire {
         private final Wire wire;
         private final int x1;
@@ -1329,6 +2048,13 @@ public class CircuitPanel extends JPanel {
         private final int y2;
         private final double angle;
 
+        /**
+         * @param wire wire to draw
+         * @param x1 start X
+         * @param y1 start Y
+         * @param x2 end X
+         * @param y2 end Y
+         */
         private RenderWire(Wire wire, int x1, int y1, int x2, int y2) {
             this.wire = wire;
             this.x1 = x1;
@@ -1339,11 +2065,19 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Intersection marker for wire crossings.
+     */
     private static class WireCrossing {
         private final int x;
         private final int y;
         private final double angle;
 
+        /**
+         * @param x crossing X
+         * @param y crossing Y
+         * @param angle wire angle
+         */
         private WireCrossing(int x, int y, double angle) {
             this.x = x;
             this.y = y;
@@ -1351,6 +2085,9 @@ public class CircuitPanel extends JPanel {
         }
     }
 
+    /**
+     * Computes distance from a point to a line segment.
+     */
     private double distanceToSegment(int px, int py, int x1, int y1, int x2, int y2) {
         double dx = x2 - x1;
         double dy = y2 - y1;
@@ -1364,6 +2101,9 @@ public class CircuitPanel extends JPanel {
         return Math.hypot(px - projX, py - projY);
     }
 
+    /**
+     * Builds render wires with offset calculations applied.
+     */
     private List<RenderWire> buildRenderWires() {
         List<RenderWire> renderWires = new ArrayList<>();
         Map<Wire, Offset> offsets = computeWireOffsets();
@@ -1384,6 +2124,9 @@ public class CircuitPanel extends JPanel {
         return renderWires;
     }
 
+    /**
+     * Draws overpass arcs where wires cross.
+     */
     private void drawWireCrossings(Graphics2D g2, List<RenderWire> renderWires) {
         Map<Wire, List<WireCrossing>> crossings = computeWireCrossings(renderWires);
         if (crossings.isEmpty()) {
@@ -1414,6 +2157,9 @@ public class CircuitPanel extends JPanel {
         g2.setColor(originalColor);
     }
 
+    /**
+     * Computes crossings between wire segments.
+     */
     private Map<Wire, List<WireCrossing>> computeWireCrossings(List<RenderWire> renderWires) {
         Map<Wire, List<WireCrossing>> crossings = new HashMap<>();
         Map<Wire, Set<PointKey>> seen = new HashMap<>();
@@ -1443,6 +2189,9 @@ public class CircuitPanel extends JPanel {
         return crossings;
     }
 
+    /**
+     * Chooses which wire should draw over the other at a crossing.
+     */
     private RenderWire chooseOverWire(RenderWire first, RenderWire second) {
         boolean firstVertical = isMostlyVertical(first);
         boolean secondVertical = isMostlyVertical(second);
@@ -1452,12 +2201,18 @@ public class CircuitPanel extends JPanel {
         return second;
     }
 
+    /**
+     * @return true when the wire is mostly vertical
+     */
     private boolean isMostlyVertical(RenderWire wire) {
         int dx = Math.abs(wire.x2 - wire.x1);
         int dy = Math.abs(wire.y2 - wire.y1);
         return dy > dx;
     }
 
+    /**
+     * @return true if two wires share a node
+     */
     private boolean sharesNode(Wire first, Wire second) {
         if (first == null || second == null) {
             return false;
@@ -1470,6 +2225,9 @@ public class CircuitPanel extends JPanel {
                 || (aEnd != null && (aEnd == bStart || aEnd == bEnd));
     }
 
+    /**
+     * @return true if render wires are colinear
+     */
     private boolean areColinear(RenderWire first, RenderWire second) {
         long dx1 = first.x2 - first.x1;
         long dy1 = first.y2 - first.y1;
@@ -1478,6 +2236,9 @@ public class CircuitPanel extends JPanel {
         return (dx1 * dy2) - (dy1 * dx2) == 0;
     }
 
+    /**
+     * Computes the intersection point of two line segments, if any.
+     */
     private java.awt.Point getIntersectionPoint(RenderWire first, RenderWire second) {
         double x1 = first.x1;
         double y1 = first.y1;
@@ -1502,6 +2263,9 @@ public class CircuitPanel extends JPanel {
         return new java.awt.Point((int) Math.round(px), (int) Math.round(py));
     }
 
+    /**
+     * @return true if the point lies within the segment bounds
+     */
     private boolean isWithinSegment(double px, double py, double x1, double y1, double x2, double y2) {
         double minX = Math.min(x1, x2) - 0.1;
         double maxX = Math.max(x1, x2) + 0.1;
@@ -1510,6 +2274,9 @@ public class CircuitPanel extends JPanel {
         return px >= minX && px <= maxX && py >= minY && py <= maxY;
     }
 
+    /**
+     * Computes parallel offsets for colinear wires.
+     */
     private Map<Wire, Offset> computeWireOffsets() {
         Map<Wire, Offset> offsets = new HashMap<>();
         List<List<Wire>> groups = new ArrayList<>();
@@ -1559,6 +2326,9 @@ public class CircuitPanel extends JPanel {
         return offsets;
     }
 
+    /**
+     * Computes average offsets for nodes based on attached wires.
+     */
     private Map<WireNode, Offset> computeNodeOffsets(Map<Wire, Offset> wireOffsets) {
         Map<WireNode, OffsetAccumulator> accumulators = new HashMap<>();
         for (Wire wire : wires) {
@@ -1582,6 +2352,9 @@ public class CircuitPanel extends JPanel {
         return nodeOffsets;
     }
 
+    /**
+     * Resolves the offset for a specific wire endpoint.
+     */
     private Offset resolveEndpointOffset(Wire wire, WireNode node, boolean isStart, Offset wireOffset,
             Map<Wire, Offset> wireOffsets, Map<WireNode, Offset> nodeOffsets) {
         if (!wireOffset.isZero()) {
@@ -1597,6 +2370,9 @@ public class CircuitPanel extends JPanel {
         return nodeOffsets.getOrDefault(node, wireOffset);
     }
 
+    /**
+     * Adds an offset into the accumulator for a node.
+     */
     private void addOffsetToNode(Map<WireNode, OffsetAccumulator> accumulators, WireNode node, Offset offset) {
         if (node == null) {
             return;
@@ -1611,6 +2387,9 @@ public class CircuitPanel extends JPanel {
         accumulator.count++;
     }
 
+    /**
+     * @return true if two wires are colinear and overlapping
+     */
     private boolean areColinearOverlap(Wire first, Wire second) {
         if (!areColinear(first, second)) {
             return false;
@@ -1618,6 +2397,9 @@ public class CircuitPanel extends JPanel {
         return segmentsOverlap(first, second);
     }
 
+    /**
+     * @return true if two wires are colinear
+     */
     private boolean areColinear(Wire first, Wire second) {
         int x1 = first.getStart().getX();
         int y1 = first.getStart().getY();
@@ -1636,6 +2418,9 @@ public class CircuitPanel extends JPanel {
         return (dx1 * dy3) - (dy1 * dx3) == 0 && (dx1 * dy4) - (dy1 * dx4) == 0;
     }
 
+    /**
+     * @return true when two colinear segments overlap
+     */
     private boolean segmentsOverlap(Wire first, Wire second) {
         int x1 = first.getStart().getX();
         int y1 = first.getStart().getY();
@@ -1660,35 +2445,58 @@ public class CircuitPanel extends JPanel {
         return maxB >= minA && minB <= maxA;
     }
 
+    /**
+     * Offset for drawing parallel wires.
+     */
     private static class Offset {
         private final int dx;
         private final int dy;
 
+        /**
+         * @param dx offset in X
+         * @param dy offset in Y
+         */
         private Offset(int dx, int dy) {
             this.dx = dx;
             this.dy = dy;
         }
 
+        /**
+         * @return true if both offsets are zero
+         */
         private boolean isZero() {
             return dx == 0 && dy == 0;
         }
     }
 
+    /**
+     * Accumulates offsets for a node.
+     */
     private static class OffsetAccumulator {
         private int sumDx;
         private int sumDy;
         private int count;
     }
 
+    /**
+     * Key used to avoid duplicate crossings.
+     */
     private static class PointKey {
         private final int x;
         private final int y;
 
+        /**
+         * @param x point X
+         * @param y point Y
+         */
         private PointKey(int x, int y) {
             this.x = x;
             this.y = y;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public boolean equals(Object obj) {
             if (this == obj) {
@@ -1701,12 +2509,18 @@ public class CircuitPanel extends JPanel {
             return x == other.x && y == other.y;
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public int hashCode() {
             return (31 * x) + y;
         }
     }
 
+    /**
+     * Finds a connection point near the provided coordinates.
+     */
     private ConnectionPoint findConnectionPointAt(int mouseX, int mouseY) {
         for (int i = components.size() - 1; i >= 0; i--) {
             CircuitComponent component = components.get(i);
@@ -1724,6 +2538,9 @@ public class CircuitPanel extends JPanel {
         return null;
     }
 
+    /**
+     * Lays out the short-circuit popup in the corner.
+     */
     @Override
     public void doLayout() {
         super.doLayout();

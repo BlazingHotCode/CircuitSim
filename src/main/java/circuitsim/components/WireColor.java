@@ -2,6 +2,9 @@ package circuitsim.components;
 
 import java.awt.Color;
 
+/**
+ * Palette of wire colors used in the UI.
+ */
 public enum WireColor {
     WHITE("White", new Color(235, 235, 240)),
     RED("Red", new Color(220, 80, 80)),
@@ -17,10 +20,16 @@ public enum WireColor {
         this.color = color;
     }
 
+    /**
+     * @return display name
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * @return swatch color
+     */
     public Color getColor() {
         return color;
     }

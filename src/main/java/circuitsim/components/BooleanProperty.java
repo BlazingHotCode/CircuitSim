@@ -3,10 +3,19 @@ package circuitsim.components;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * Boolean-backed property with simple getter/setter wiring.
+ */
 public class BooleanProperty extends AbstractComponentProperty {
     private final Supplier<Boolean> getter;
     private final Consumer<Boolean> setter;
 
+    /**
+     * @param name display name for the property
+     * @param getter supplies the current value
+     * @param setter updates the current value
+     * @param displayable whether to show the value on the canvas
+     */
     public BooleanProperty(String name, Supplier<Boolean> getter, Consumer<Boolean> setter, boolean displayable) {
         super(name, ComponentPropertyType.BOOLEAN, displayable, true);
         this.getter = getter;

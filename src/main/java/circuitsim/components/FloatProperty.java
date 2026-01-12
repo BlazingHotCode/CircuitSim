@@ -6,6 +6,9 @@ import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * Float-backed property with formatted display values.
+ */
 public class FloatProperty extends AbstractComponentProperty {
     private static final DecimalFormat VALUE_FORMAT =
             new DecimalFormat("0.##", DecimalFormatSymbols.getInstance(Locale.US));
@@ -13,6 +16,12 @@ public class FloatProperty extends AbstractComponentProperty {
     private final Supplier<Float> getter;
     private final Consumer<Float> setter;
 
+    /**
+     * @param name display name for the property
+     * @param getter supplies the current value
+     * @param setter updates the current value
+     * @param displayable whether to show the value on the canvas
+     */
     public FloatProperty(String name, Supplier<Float> getter, Consumer<Float> setter, boolean displayable) {
         super(name, ComponentPropertyType.FLOAT, displayable, true);
         this.getter = getter;
@@ -24,6 +33,9 @@ public class FloatProperty extends AbstractComponentProperty {
         return getter.get();
     }
 
+    /**
+     * @throws IllegalArgumentException when the provided value is not numeric
+     */
     @Override
     public void setValueFromEditor(Object value) {
         if (value instanceof Number) {

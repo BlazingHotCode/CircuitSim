@@ -5,6 +5,9 @@ import circuitsim.ui.Grid;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 
+/**
+ * User-toggleable switch component.
+ */
 public class Switch extends CircuitComponent implements SwitchLike {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 3;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
@@ -13,6 +16,10 @@ public class Switch extends CircuitComponent implements SwitchLike {
     private boolean closed;
     private float computedAmpere;
 
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     */
     public Switch(int x, int y) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, CONNECTION_AMOUNT);
         this.closed = false;
@@ -25,10 +32,16 @@ public class Switch extends CircuitComponent implements SwitchLike {
         return closed;
     }
 
+    /**
+     * Sets whether the switch is closed.
+     */
     public void setClosed(boolean closed) {
         this.closed = closed;
     }
 
+    /**
+     * @return computed current for display
+     */
     public float getComputedAmpere() {
         return computedAmpere;
     }
@@ -38,15 +51,24 @@ public class Switch extends CircuitComponent implements SwitchLike {
         this.computedAmpere = computedAmpere;
     }
 
+    /**
+     * Toggles the switch state.
+     */
     public void toggle() {
         closed = !closed;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected boolean includeDefaultProperties() {
         return false;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     protected void drawComponent(Graphics2D g2) {
         g2.setColor(Colors.COMPONENT_STROKE);
