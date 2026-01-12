@@ -9,14 +9,16 @@ import java.util.List;
  */
 public final class ComponentRegistry {
     private static final List<Entry> ENTRIES = new ArrayList<>();
+    private static final List<Group> GROUPS = new ArrayList<>();
+    private static final String DEFAULT_GROUP = "General";
 
     static {
-        register("Battery", (x, y) -> new Battery(x, y));
-        register("Resistor", (x, y) -> new Resistor(x, y));
-        register("Voltmeter", (x, y) -> new Voltmeter(x, y));
-        register("Ammeter", (x, y) -> new Ammeter(x, y));
-        register("Switch (User)", (x, y) -> new Switch(x, y));
-        register("Ground", (x, y) -> new Ground(x, y));
+        register("Sources", "Battery", (x, y) -> new Battery(x, y));
+        register("Passive", "Resistor", (x, y) -> new Resistor(x, y));
+        register("Meters", "Voltmeter", (x, y) -> new Voltmeter(x, y));
+        register("Meters", "Ammeter", (x, y) -> new Ammeter(x, y));
+        register("Controls", "Switch (User)", (x, y) -> new Switch(x, y));
+        register("Reference", "Ground", (x, y) -> new Ground(x, y));
     }
 
     private ComponentRegistry() {
@@ -29,7 +31,20 @@ public final class ComponentRegistry {
      * @param factory factory for creating components
      */
     public static void register(String name, ComponentFactory factory) {
-        ENTRIES.add(new Entry(name, factory));
+        register(DEFAULT_GROUP, name, factory);
+    }
+
+    /**
+     * Registers a new component type under a group.
+     *
+     * @param groupName group label shown in the UI
+     * @param name label shown in the UI
+     * @param factory factory for creating components
+     */
+    public static void register(String groupName, String name, ComponentFactory factory) {
+        Entry entry = new Entry(groupName, name, factory);
+        ENTRIES.add(entry);
+        getOrCreateGroup(groupName).entries.add(entry);
     }
 
     /**
@@ -37,6 +52,24 @@ public final class ComponentRegistry {
      */
     public static List<Entry> getEntries() {
         return Collections.unmodifiableList(ENTRIES);
+    }
+
+    /**
+     * @return immutable list of component groups
+     */
+    public static List<Group> getGroups() {
+        return Collections.unmodifiableList(GROUPS);
+    }
+
+    private static Group getOrCreateGroup(String groupName) {
+        for (Group group : GROUPS) {
+            if (group.name.equals(groupName)) {
+                return group;
+            }
+        }
+        Group group = new Group(groupName);
+        GROUPS.add(group);
+        return group;
     }
 
     /**
@@ -55,12 +88,21 @@ public final class ComponentRegistry {
      * Registry entry with a display name and factory.
      */
     public static final class Entry {
+        private final String groupName;
         private final String name;
         private final ComponentFactory factory;
 
-        private Entry(String name, ComponentFactory factory) {
+        private Entry(String groupName, String name, ComponentFactory factory) {
+            this.groupName = groupName;
             this.name = name;
             this.factory = factory;
+        }
+
+        /**
+         * @return group name used in the UI
+         */
+        public String getGroupName() {
+            return groupName;
         }
 
         /**
@@ -77,6 +119,32 @@ public final class ComponentRegistry {
          */
         public CircuitComponent create(int x, int y) {
             return factory.create(x, y);
+        }
+    }
+
+    /**
+     * Group of component entries for the palette UI.
+     */
+    public static final class Group {
+        private final String name;
+        private final List<Entry> entries = new ArrayList<>();
+
+        private Group(String name) {
+            this.name = name;
+        }
+
+        /**
+         * @return group display name
+         */
+        public String getName() {
+            return name;
+        }
+
+        /**
+         * @return immutable list of entries in this group
+         */
+        public List<Entry> getEntries() {
+            return Collections.unmodifiableList(entries);
         }
     }
 }

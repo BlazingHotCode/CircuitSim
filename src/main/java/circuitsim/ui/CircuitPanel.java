@@ -12,6 +12,7 @@ import circuitsim.components.WireNode;
 import circuitsim.io.BoardState;
 import circuitsim.io.BoardStateIO;
 import circuitsim.physics.CircuitPhysics;
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
@@ -98,6 +99,8 @@ public class CircuitPanel extends JPanel {
     private int panOriginOffsetX;
     private int panOriginOffsetY;
     private boolean panMoved;
+    private Integer lastMouseWorldX;
+    private Integer lastMouseWorldY;
     private JPopupMenu clearPopup;
     private double zoomFactor = 1.0;
     private static final double MIN_ZOOM = 0.5;
@@ -109,6 +112,11 @@ public class CircuitPanel extends JPanel {
     private final Deque<BoardState> undoStack = new ArrayDeque<>();
     private final Deque<BoardState> redoStack = new ArrayDeque<>();
     private boolean applyingState;
+    private Runnable toggleComponentBarAction;
+    private ComponentRegistry.Entry placementEntry;
+    private CircuitComponent placementPreview;
+    private Integer placementX;
+    private Integer placementY;
 
     /**
      * @param propertiesPanel panel used to edit component properties
@@ -119,6 +127,7 @@ public class CircuitPanel extends JPanel {
         setPreferredSize(new Dimension(800, 600));
         setLayout(null);
         setFocusable(true);
+        setFocusTraversalKeysEnabled(false);
         add(shortCircuitPopup);
         MouseAdapter mouseHandler = new MouseAdapter() {
             /**
@@ -127,6 +136,7 @@ public class CircuitPanel extends JPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 requestFocusInWindow();
+                updateLastMouseWorld(e.getX(), e.getY());
                 boolean toggleSelection = e.isControlDown();
                 if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
                     panningView = true;
@@ -139,6 +149,10 @@ public class CircuitPanel extends JPanel {
                 }
                 int worldX = toWorldX(e.getX());
                 int worldY = toWorldY(e.getY());
+                if (placementEntry != null && SwingUtilities.isLeftMouseButton(e)) {
+                    placeActiveComponentAt(worldX, worldY);
+                    return;
+                }
                 if (creatingWire && lockedWire) {
                     int endX = Grid.snap(worldX);
                     int endY = Grid.snap(worldY);
@@ -292,6 +306,7 @@ public class CircuitPanel extends JPanel {
              */
             @Override
             public void mouseDragged(MouseEvent e) {
+                updateLastMouseWorld(e.getX(), e.getY());
                 if (!panningView && SwingUtilities.isRightMouseButton(e)) {
                     panningView = true;
                     panStartX = e.getX();
@@ -431,6 +446,10 @@ public class CircuitPanel extends JPanel {
              */
             @Override
             public void mouseMoved(MouseEvent e) {
+                updateLastMouseWorld(e.getX(), e.getY());
+                if (placementEntry != null) {
+                    updatePlacementAtScreen(e.getX(), e.getY());
+                }
                 if (creatingWire) {
                     int worldX = toWorldX(e.getX());
                     int worldY = toWorldY(e.getY());
@@ -462,6 +481,7 @@ public class CircuitPanel extends JPanel {
         configureSaveKeyBindings();
         configureLoadKeyBindings();
         configureUndoRedoKeyBindings();
+        configureComponentBarKeyBindings();
         initializeAutosavePath();
         attemptLoadAutosave();
         if (undoStack.isEmpty()) {
@@ -486,6 +506,7 @@ public class CircuitPanel extends JPanel {
         for (CircuitComponent component : components) {
             component.draw(g2);
         }
+        drawPlacementPreview(g2);
         if (!selectedComponents.isEmpty()) {
             boolean drawHandles = selectedComponents.size() == 1 && selectedWires.isEmpty();
             for (CircuitComponent component : selectedComponents) {
@@ -509,6 +530,20 @@ public class CircuitPanel extends JPanel {
         g2.setColor(activeWireColor.getColor());
         g2.drawLine(newWireStartNode.getX(), newWireStartNode.getY(), wireDragX, wireDragY);
         g2.setColor(originalColor);
+    }
+
+    /**
+     * Draws the placement ghost for the active component.
+     */
+    private void drawPlacementPreview(Graphics2D g2) {
+        if (placementPreview == null || placementX == null || placementY == null) {
+            return;
+        }
+        java.awt.Composite originalComposite = g2.getComposite();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
+        placementPreview.setPosition(placementX, placementY);
+        placementPreview.draw(g2);
+        g2.setComposite(originalComposite);
     }
 
     /**
@@ -681,9 +716,7 @@ public class CircuitPanel extends JPanel {
             for (ComponentRegistry.Entry entry : ComponentRegistry.getEntries()) {
                 JMenuItem item = new JMenuItem(entry.getName());
                 item.addActionListener(event -> {
-                    components.add(entry.create(Grid.snap(worldX), Grid.snap(worldY)));
-                    recordHistoryState();
-                    repaint();
+                    addComponentAtWorld(entry, worldX, worldY);
                 });
                 addMenu.add(item);
             }
@@ -703,6 +736,113 @@ public class CircuitPanel extends JPanel {
         });
         menu.add(deleteItem);
         menu.show(this, e.getX(), e.getY());
+    }
+
+    /**
+     * Adds a component entry at a world position and updates history.
+     */
+    private void addComponentAtWorld(ComponentRegistry.Entry entry, int worldX, int worldY) {
+        if (entry == null) {
+            return;
+        }
+        components.add(entry.create(Grid.snap(worldX), Grid.snap(worldY)));
+        recordHistoryState();
+        repaint();
+    }
+
+    /**
+     * Begins placement mode with a preview component.
+     */
+    public void beginPlacementMode(ComponentRegistry.Entry entry) {
+        if (entry == null) {
+            return;
+        }
+        placementEntry = entry;
+        placementPreview = entry.create(0, 0);
+        int startX = lastMouseWorldX != null ? lastMouseWorldX : toWorldX(getWidth() / 2);
+        int startY = lastMouseWorldY != null ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        placementX = Grid.snap(startX);
+        placementY = Grid.snap(startY);
+        repaint();
+    }
+
+    /**
+     * Ends placement mode and clears the preview.
+     */
+    public void endPlacementMode() {
+        placementEntry = null;
+        placementPreview = null;
+        placementX = null;
+        placementY = null;
+        repaint();
+    }
+
+    /**
+     * Updates the placement preview based on a screen coordinate.
+     */
+    public void updatePlacementFromScreenPoint(Point screenPoint) {
+        if (screenPoint == null || !isShowing()) {
+            return;
+        }
+        Point local = new Point(screenPoint);
+        SwingUtilities.convertPointFromScreen(local, this);
+        updatePlacementAtScreen(local.x, local.y);
+    }
+
+    /**
+     * Places a component using a screen coordinate.
+     */
+    public void placeComponentAtScreenPoint(ComponentRegistry.Entry entry, Point screenPoint) {
+        if (entry == null || screenPoint == null || !isShowing()) {
+            return;
+        }
+        Point local = new Point(screenPoint);
+        SwingUtilities.convertPointFromScreen(local, this);
+        addComponentAtWorld(entry, toWorldX(local.x), toWorldY(local.y));
+    }
+
+    /**
+     * Adds a component near the most recent mouse position or the view center.
+     */
+    public void addComponentFromPalette(ComponentRegistry.Entry entry) {
+        if (entry == null) {
+            return;
+        }
+        int targetX = lastMouseWorldX != null ? lastMouseWorldX : toWorldX(getWidth() / 2);
+        int targetY = lastMouseWorldY != null ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        addComponentAtWorld(entry, targetX, targetY);
+    }
+
+    /**
+     * Stores the latest mouse position in world coordinates for palette placement.
+     */
+    private void updateLastMouseWorld(int screenX, int screenY) {
+        lastMouseWorldX = toWorldX(screenX);
+        lastMouseWorldY = toWorldY(screenY);
+    }
+
+    private void updatePlacementAtScreen(int screenX, int screenY) {
+        if (placementEntry == null) {
+            return;
+        }
+        placementX = Grid.snap(toWorldX(screenX));
+        placementY = Grid.snap(toWorldY(screenY));
+        repaint();
+    }
+
+    private void placeActiveComponentAt(int worldX, int worldY) {
+        if (placementEntry == null) {
+            return;
+        }
+        addComponentAtWorld(placementEntry, worldX, worldY);
+        endPlacementMode();
+    }
+
+    /**
+     * Sets the toggle action for the top component bar.
+     */
+    public void setComponentBarToggle(Runnable toggleComponentBarAction) {
+        this.toggleComponentBarAction = toggleComponentBarAction;
     }
 
     /**
@@ -955,6 +1095,26 @@ public class CircuitPanel extends JPanel {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 redoLastAction();
+            }
+        });
+    }
+
+    /**
+     * Binds Tab to toggle the component bar.
+     */
+    private void configureComponentBarKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0), "toggleComponentBar");
+        actionMap.put("toggleComponentBar", new javax.swing.AbstractAction() {
+            /**
+             * {@inheritDoc}
+             */
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (toggleComponentBarAction != null) {
+                    toggleComponentBarAction.run();
+                }
             }
         });
     }

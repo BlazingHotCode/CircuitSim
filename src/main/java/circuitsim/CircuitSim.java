@@ -2,6 +2,7 @@ package circuitsim;
 
 import circuitsim.ui.CircuitPanel;
 import circuitsim.ui.ClearBoardPanel;
+import circuitsim.ui.ComponentBarPanel;
 import circuitsim.ui.ComponentPropertiesPanel;
 import circuitsim.ui.WirePalettePanel;
 
@@ -33,13 +34,16 @@ public class CircuitSim {
                 circuitPanel.handlePropertyChange();
                 circuitPanel.repaint();
             });
+            ComponentBarPanel componentBarPanel = new ComponentBarPanel(circuitPanel);
+            circuitPanel.setComponentBarToggle(componentBarPanel::toggleVisibility);
 
             WirePalettePanel wirePalettePanel = new WirePalettePanel(
                     circuitPanel.getActiveWireColor(),
                     circuitPanel::setActiveWireColor);
             ClearBoardPanel clearBoardPanel = new ClearBoardPanel(circuitPanel::requestClearBoard);
 
-            JLayeredPane layeredPane = buildLayeredPane(circuitPanel, wirePalettePanel, clearBoardPanel);
+            JLayeredPane layeredPane = buildLayeredPane(circuitPanel, wirePalettePanel,
+                    clearBoardPanel, componentBarPanel);
             frame.add(layeredPane, BorderLayout.CENTER);
             frame.add(propertiesPanel, BorderLayout.EAST);
             frame.setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -64,15 +68,18 @@ public class CircuitSim {
      */
     private static JLayeredPane buildLayeredPane(CircuitPanel circuitPanel,
                                                  WirePalettePanel wirePalettePanel,
-                                                 ClearBoardPanel clearBoardPanel) {
+                                                 ClearBoardPanel clearBoardPanel,
+                                                 ComponentBarPanel componentBarPanel) {
         JLayeredPane layeredPane = new JLayeredPane();
         layeredPane.add(circuitPanel, Integer.valueOf(0));
         layeredPane.add(wirePalettePanel, Integer.valueOf(1));
         layeredPane.add(clearBoardPanel, Integer.valueOf(1));
+        layeredPane.add(componentBarPanel, Integer.valueOf(2));
         layeredPane.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
-                layoutFloatingPanels(layeredPane, circuitPanel, wirePalettePanel, clearBoardPanel);
+                layoutFloatingPanels(layeredPane, circuitPanel, wirePalettePanel, clearBoardPanel,
+                        componentBarPanel);
             }
         });
         return layeredPane;
@@ -84,10 +91,13 @@ public class CircuitSim {
     private static void layoutFloatingPanels(JLayeredPane layeredPane,
                                              CircuitPanel circuitPanel,
                                              WirePalettePanel wirePalettePanel,
-                                             ClearBoardPanel clearBoardPanel) {
+                                             ClearBoardPanel clearBoardPanel,
+                                             ComponentBarPanel componentBarPanel) {
         int width = layeredPane.getWidth();
         int height = layeredPane.getHeight();
         circuitPanel.setBounds(0, 0, width, height);
+
+        componentBarPanel.applyLayout(width, 0);
 
         Dimension paletteSize = wirePalettePanel.getPreferredSize();
         int paletteX = PANEL_PADDING;

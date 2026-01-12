@@ -27,6 +27,14 @@ public final class Colors {
     public static final Color WIRE_PALETTE_BG = new Color(38, 38, 42);
     public static final Color WIRE_PALETTE_BORDER = new Color(70, 70, 80);
     public static final Color WIRE_PALETTE_SELECTED = new Color(130, 200, 255);
+    public static final Color COMPONENT_BAR_BG = new Color(40, 40, 46);
+    public static final Color COMPONENT_BAR_BORDER = new Color(70, 70, 80);
+    public static final Color COMPONENT_BAR_TEXT = new Color(230, 230, 235);
+    public static final Color COMPONENT_BAR_HOVER = new Color(75, 90, 110);
+    public static final Color COMPONENT_DROPDOWN_BG = new Color(32, 32, 36);
+    public static final Color COMPONENT_DROPDOWN_BORDER = new Color(70, 70, 80);
+    public static final Color COMPONENT_ENTRY_HOVER = new Color(60, 80, 110);
+    public static final Color COMPONENT_ENTRY_TEXT = new Color(220, 220, 230);
 
     /**
      * Prevent instantiation.
