@@ -1,8 +1,10 @@
 package circuitsim.ui;
 
+import circuitsim.components.Ammeter;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ComponentRegistry;
 import circuitsim.components.ConnectionPoint;
+import circuitsim.components.Voltmeter;
 import circuitsim.components.WireNode;
 import circuitsim.components.Wire;
 import circuitsim.physics.CircuitPhysics;
@@ -15,9 +17,11 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JComponent;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
@@ -32,6 +36,7 @@ public class CircuitPanel extends JPanel {
     private boolean lastShortCircuit = false;
     private CircuitComponent draggedComponent;
     private CircuitComponent selectedComponent;
+    private Wire selectedWire;
     private WireNode newWireStartNode;
     private boolean creatingWire;
     private Wire draggingWire;
@@ -56,20 +61,22 @@ public class CircuitPanel extends JPanel {
         setBackground(Colors.CANVAS_BG);
         setPreferredSize(new Dimension(800, 600));
         setLayout(null);
+        setFocusable(true);
         add(shortCircuitPopup);
         MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                requestFocusInWindow();
                 if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
                     showContextMenu(e);
                     return;
                 }
                 ConnectionPoint hitPoint = findConnectionPointAt(e.getX(), e.getY());
                 if (hitPoint != null) {
-                    selectedComponent = hitPoint.getOwner();
-                    propertiesPanel.setOwner(selectedComponent);
-                    int startX = Grid.snap(hitPoint.getX());
-                    int startY = Grid.snap(hitPoint.getY());
+                    setSelectedComponent(hitPoint.getOwner());
+                    selectedWire = null;
+                    int startX = selectedComponent.getConnectionPointWorldX(hitPoint);
+                    int startY = selectedComponent.getConnectionPointWorldY(hitPoint);
                     newWireStartNode = getOrCreateNodeAt(startX, startY);
                     creatingWire = true;
                     wireDragX = startX;
@@ -81,6 +88,8 @@ public class CircuitPanel extends JPanel {
                 if (endpointHit != null) {
                     newWireStartNode = endpointHit.node;
                     creatingWire = true;
+                    selectedWire = endpointHit.wire;
+                    setSelectedComponent(null);
                     wireDragX = newWireStartNode.getX();
                     wireDragY = newWireStartNode.getY();
                     repaint();
@@ -89,6 +98,8 @@ public class CircuitPanel extends JPanel {
                 WireHit wireHit = findWireAt(e.getX(), e.getY());
                 if (wireHit != null) {
                     draggingWire = wireHit.wire;
+                    selectedWire = wireHit.wire;
+                    setSelectedComponent(null);
                     wireDragStartX = Grid.snap(e.getX());
                     wireDragStartY = Grid.snap(e.getY());
                     wireStartAX = draggingWire.getStart().getX();
@@ -102,8 +113,8 @@ public class CircuitPanel extends JPanel {
                 for (int i = components.size() - 1; i >= 0; i--) {
                     CircuitComponent component = components.get(i);
                     if (component.contains(e.getX(), e.getY())) {
-                        selectedComponent = component;
-                        propertiesPanel.setOwner(selectedComponent);
+                        setSelectedComponent(component);
+                        selectedWire = null;
                         if (isInRotateHandle(component, e.getX(), e.getY())) {
                             component.rotate90();
                             repaint();
@@ -126,8 +137,8 @@ public class CircuitPanel extends JPanel {
                     repaint();
                     return;
                 }
-                selectedComponent = null;
-                propertiesPanel.setOwner(null);
+                setSelectedComponent(null);
+                selectedWire = null;
                 draggedComponent = null;
                 resizing = false;
                 repaint();
@@ -208,6 +219,7 @@ public class CircuitPanel extends JPanel {
         };
         addMouseListener(mouseHandler);
         addMouseMotionListener(mouseHandler);
+        configureDeleteKeyBindings();
     }
 
     @Override
@@ -304,6 +316,8 @@ public class CircuitPanel extends JPanel {
     private void showContextMenu(MouseEvent e) {
         WireHit wireHit = findWireAt(e.getX(), e.getY());
         if (wireHit != null) {
+            selectedWire = wireHit.wire;
+            setSelectedComponent(null);
             JPopupMenu menu = new JPopupMenu();
             JCheckBoxMenuItem showDataItem = new JCheckBoxMenuItem("Show Data", wireHit.wire.isShowData());
             showDataItem.addActionListener(event -> {
@@ -336,8 +350,8 @@ public class CircuitPanel extends JPanel {
             menu.show(this, e.getX(), e.getY());
             return;
         }
-        selectedComponent = component;
-        propertiesPanel.setOwner(component);
+        setSelectedComponent(component);
+        selectedWire = null;
         JPopupMenu menu = new JPopupMenu();
         JMenuItem deleteItem = new JMenuItem("Delete");
         deleteItem.addActionListener(event -> {
@@ -375,9 +389,49 @@ public class CircuitPanel extends JPanel {
         if (wire == null) {
             return false;
         }
+        if (selectedWire == wire) {
+            selectedWire = null;
+        }
         wire.detach();
         wires.remove(wire);
         return true;
+    }
+
+    private void deleteSelected() {
+        if (selectedComponent != null) {
+            CircuitComponent component = selectedComponent;
+            component.disconnectAllConnections();
+            components.remove(component);
+            setSelectedComponent(null);
+            repaint();
+            return;
+        }
+        if (selectedWire != null) {
+            removeWire(selectedWire);
+            repaint();
+        }
+    }
+
+    private void configureDeleteKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "deleteSelection");
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), "deleteSelection");
+        actionMap.put("deleteSelection", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                deleteSelected();
+            }
+        });
+    }
+
+    private void setSelectedComponent(CircuitComponent component) {
+        selectedComponent = component;
+        if (component == null || component instanceof Ammeter || component instanceof Voltmeter) {
+            propertiesPanel.setOwner(null);
+        } else {
+            propertiesPanel.setOwner(component);
+        }
     }
 
     private WireHit findWireAt(int mouseX, int mouseY) {
@@ -482,8 +536,10 @@ public class CircuitPanel extends JPanel {
             CircuitComponent component = components.get(i);
             int radius = component.getConnectionDotSize() / 2;
             for (ConnectionPoint point : component.getConnectionPoints()) {
-                int dx = mouseX - point.getX();
-                int dy = mouseY - point.getY();
+                int centerX = component.getConnectionPointWorldX(point);
+                int centerY = component.getConnectionPointWorldY(point);
+                int dx = mouseX - centerX;
+                int dy = mouseY - centerY;
                 if ((dx * dx) + (dy * dy) <= radius * radius) {
                     return point;
                 }

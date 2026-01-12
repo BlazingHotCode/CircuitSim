@@ -29,33 +29,11 @@ public class ConnectionPoint {
     }
 
     public int getX() {
-        int localX = owner.getX() + Math.round(owner.getWidth() * relativeX);
-        int localY = owner.getY() + Math.round(owner.getHeight() * relativeY);
-        double centerX = owner.getX() + (owner.getWidth() / 2.0);
-        double centerY = owner.getY() + (owner.getHeight() / 2.0);
-        double angle = owner.getRotationRadians();
-        if (angle == 0) {
-            return circuitsim.ui.Grid.snap(localX);
-        }
-        double dx = localX - centerX;
-        double dy = localY - centerY;
-        double rotatedX = (dx * Math.cos(angle)) - (dy * Math.sin(angle));
-        return circuitsim.ui.Grid.snap((int) Math.round(centerX + rotatedX));
+        return owner.getX() + Math.round(owner.getWidth() * relativeX);
     }
 
     public int getY() {
-        int localX = owner.getX() + Math.round(owner.getWidth() * relativeX);
-        int localY = owner.getY() + Math.round(owner.getHeight() * relativeY);
-        double centerX = owner.getX() + (owner.getWidth() / 2.0);
-        double centerY = owner.getY() + (owner.getHeight() / 2.0);
-        double angle = owner.getRotationRadians();
-        if (angle == 0) {
-            return circuitsim.ui.Grid.snap(localY);
-        }
-        double dx = localX - centerX;
-        double dy = localY - centerY;
-        double rotatedY = (dx * Math.sin(angle)) + (dy * Math.cos(angle));
-        return circuitsim.ui.Grid.snap((int) Math.round(centerY + rotatedY));
+        return owner.getY() + Math.round(owner.getHeight() * relativeY);
     }
 
     public ConnectionPoint getConnectedPoint() {

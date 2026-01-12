@@ -40,6 +40,7 @@ public class ComponentPropertiesPanel extends JPanel {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         setBackground(Colors.PROPERTIES_BG);
+        setVisible(false);
         formPanel.setBackground(Colors.PROPERTIES_BG);
         titleLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
         titleLabel.setForeground(Colors.PROPERTIES_TEXT);
@@ -72,6 +73,7 @@ public class ComponentPropertiesPanel extends JPanel {
 
     public void setOwner(PropertyOwner owner) {
         this.owner = owner;
+        setVisible(owner != null);
         rebuildForm();
     }
 

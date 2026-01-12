@@ -1,15 +1,16 @@
 package circuitsim.physics;
 
 import circuitsim.components.Battery;
+import circuitsim.components.Ammeter;
 import circuitsim.components.CircuitComponent;
 import circuitsim.components.ConnectionPoint;
+import circuitsim.components.Resistor;
+import circuitsim.components.Voltmeter;
+import circuitsim.components.Wire;
 import circuitsim.components.WireNode;
 import circuitsim.ui.Grid;
 import java.awt.Point;
-import circuitsim.components.Resistor;
-import circuitsim.components.Wire;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -30,8 +31,8 @@ public final class CircuitPhysics {
         Map<Point, Integer> nodeIndex = new HashMap<>();
         for (CircuitComponent component : components) {
             for (ConnectionPoint point : component.getConnectionPoints()) {
-                int x = Grid.snap(point.getX());
-                int y = Grid.snap(point.getY());
+                int x = component.getConnectionPointWorldX(point);
+                int y = component.getConnectionPointWorldY(point);
                 getNodeIndex(nodeIndex, x, y);
             }
         }
@@ -41,8 +42,8 @@ public final class CircuitPhysics {
             if (start == null || end == null) {
                 continue;
             }
-            getNodeIndex(nodeIndex, Grid.snap(start.getX()), Grid.snap(start.getY()));
-            getNodeIndex(nodeIndex, Grid.snap(end.getX()), Grid.snap(end.getY()));
+            getNodeIndex(nodeIndex, start.getX(), start.getY());
+            getNodeIndex(nodeIndex, end.getX(), end.getY());
         }
         if (nodeIndex.isEmpty()) {
             return false;
@@ -50,6 +51,7 @@ public final class CircuitPhysics {
 
         List<Edge> edges = new ArrayList<>();
         List<Battery> batteries = new ArrayList<>();
+        List<Voltmeter> voltmeters = new ArrayList<>();
         int nodeCount = nodeIndex.size();
         for (CircuitComponent component : components) {
             if (component instanceof Resistor) {
@@ -58,15 +60,32 @@ public final class CircuitPhysics {
                 if (points.size() < 2) {
                     continue;
                 }
-                int aIndex = getNodeIndex(nodeIndex, Grid.snap(points.get(0).getX()),
-                        Grid.snap(points.get(0).getY()));
-                int bIndex = getNodeIndex(nodeIndex, Grid.snap(points.get(1).getX()),
-                        Grid.snap(points.get(1).getY()));
+                int aIndex = getNodeIndex(nodeIndex,
+                        component.getConnectionPointWorldX(points.get(0)),
+                        component.getConnectionPointWorldY(points.get(0)));
+                int bIndex = getNodeIndex(nodeIndex,
+                        component.getConnectionPointWorldX(points.get(1)),
+                        component.getConnectionPointWorldY(points.get(1)));
                 edges.add(new Edge(aIndex, bIndex,
                         Math.max(MIN_RESISTANCE, resistor.getResistance()), resistor));
             } else if (component instanceof Battery) {
                 Battery battery = (Battery) component;
                 batteries.add(battery);
+            } else if (component instanceof Ammeter) {
+                Ammeter ammeter = (Ammeter) component;
+                List<ConnectionPoint> points = ammeter.getConnectionPoints();
+                if (points.size() < 2) {
+                    continue;
+                }
+                int aIndex = getNodeIndex(nodeIndex,
+                        component.getConnectionPointWorldX(points.get(0)),
+                        component.getConnectionPointWorldY(points.get(0)));
+                int bIndex = getNodeIndex(nodeIndex,
+                        component.getConnectionPointWorldX(points.get(1)),
+                        component.getConnectionPointWorldY(points.get(1)));
+                edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, ammeter));
+            } else if (component instanceof Voltmeter) {
+                voltmeters.add((Voltmeter) component);
             }
         }
         for (Wire wire : wires) {
@@ -86,8 +105,12 @@ public final class CircuitPhysics {
             if (neg == null || pos == null) {
                 continue;
             }
-            int negIndex = getNodeIndex(nodeIndex, Grid.snap(neg.getX()), Grid.snap(neg.getY()));
-            int posIndex = getNodeIndex(nodeIndex, Grid.snap(pos.getX()), Grid.snap(pos.getY()));
+            int negIndex = getNodeIndex(nodeIndex,
+                    battery.getConnectionPointWorldX(neg),
+                    battery.getConnectionPointWorldY(neg));
+            int posIndex = getNodeIndex(nodeIndex,
+                    battery.getConnectionPointWorldX(pos),
+                    battery.getConnectionPointWorldY(pos));
             int internalNode = nodeCount++;
             double resistance = Math.max(MIN_RESISTANCE, battery.getInternalResistance());
             edges.add(new Edge(negIndex, internalNode, resistance));
@@ -96,6 +119,7 @@ public final class CircuitPhysics {
         }
         if (batteries.isEmpty()) {
             resetComputedValues(edges);
+            resetVoltmeterValues(voltmeters);
             return false;
         }
 
@@ -104,20 +128,27 @@ public final class CircuitPhysics {
         ConnectionPoint positive = primaryBattery.getPositivePoint();
         if (negative == null || positive == null) {
             resetComputedValues(edges);
+            resetVoltmeterValues(voltmeters);
             return false;
         }
 
-        int groundIndex = getNodeIndex(nodeIndex, Grid.snap(negative.getX()), Grid.snap(negative.getY()));
+        int groundIndex = getNodeIndex(nodeIndex,
+                primaryBattery.getConnectionPointWorldX(negative),
+                primaryBattery.getConnectionPointWorldY(negative));
         if (groundIndex < 0) {
             resetComputedValues(edges);
+            resetVoltmeterValues(voltmeters);
             return false;
         }
 
-        int positiveIndex = getNodeIndex(nodeIndex, Grid.snap(positive.getX()), Grid.snap(positive.getY()));
+        int positiveIndex = getNodeIndex(nodeIndex,
+                primaryBattery.getConnectionPointWorldX(positive),
+                primaryBattery.getConnectionPointWorldY(positive));
         GraphView pruned = pruneToConnected(nodeCount, edges, batteries, groundIndex, positiveIndex);
         if (pruned.edges.isEmpty()) {
             resetComputedValues(edges);
             resetUnusedValues(edges, wires, pruned);
+            resetVoltmeterValues(voltmeters);
             return false;
         }
 
@@ -126,6 +157,7 @@ public final class CircuitPhysics {
         if (shortCircuit) {
             resetComputedValues(pruned.edges);
             resetUnusedValues(edges, wires, pruned);
+            resetVoltmeterValues(voltmeters);
             return true;
         }
 
@@ -134,6 +166,7 @@ public final class CircuitPhysics {
         if (nodeVoltages == null) {
             resetComputedValues(pruned.edges);
             resetUnusedValues(edges, wires, pruned);
+            resetVoltmeterValues(voltmeters);
             return false;
         }
 
@@ -152,7 +185,11 @@ public final class CircuitPhysics {
                 edge.resistor.setComputedVoltage((float) Math.abs(voltage));
                 edge.resistor.setComputedAmpere((float) Math.abs(current));
             }
+            if (edge.ammeter != null) {
+                edge.ammeter.setComputedAmpere((float) Math.abs(current));
+            }
         }
+        updateVoltmeterValues(voltmeters, nodeIndex, pruned, nodeVoltages);
         resetUnusedValues(edges, wires, pruned);
         return false;
     }
@@ -166,6 +203,9 @@ public final class CircuitPhysics {
             if (edge.resistor != null) {
                 edge.resistor.setComputedVoltage(0f);
                 edge.resistor.setComputedAmpere(0f);
+            }
+            if (edge.ammeter != null) {
+                edge.ammeter.setComputedAmpere(0f);
             }
         }
     }
@@ -182,6 +222,44 @@ public final class CircuitPhysics {
                 edge.resistor.setComputedVoltage(0f);
                 edge.resistor.setComputedAmpere(0f);
             }
+            if (edge.ammeter != null && !pruned.ammeters.contains(edge.ammeter)) {
+                edge.ammeter.setComputedAmpere(0f);
+            }
+        }
+    }
+
+    private static void resetVoltmeterValues(List<Voltmeter> voltmeters) {
+        for (Voltmeter voltmeter : voltmeters) {
+            voltmeter.setComputedVoltage(0f);
+        }
+    }
+
+    private static void updateVoltmeterValues(List<Voltmeter> voltmeters, Map<Point, Integer> nodeIndex,
+            GraphView pruned, double[] nodeVoltages) {
+        for (Voltmeter voltmeter : voltmeters) {
+            List<ConnectionPoint> points = voltmeter.getConnectionPoints();
+            if (points.size() < 2) {
+                voltmeter.setComputedVoltage(0f);
+                continue;
+            }
+            Integer aIndex = nodeIndex.get(new Point(
+                    voltmeter.getConnectionPointWorldX(points.get(0)),
+                    voltmeter.getConnectionPointWorldY(points.get(0))));
+            Integer bIndex = nodeIndex.get(new Point(
+                    voltmeter.getConnectionPointWorldX(points.get(1)),
+                    voltmeter.getConnectionPointWorldY(points.get(1))));
+            if (aIndex == null || bIndex == null) {
+                voltmeter.setComputedVoltage(0f);
+                continue;
+            }
+            int aRemap = pruned.nodeRemap[aIndex];
+            int bRemap = pruned.nodeRemap[bIndex];
+            if (aRemap < 0 || bRemap < 0 || aRemap >= nodeVoltages.length || bRemap >= nodeVoltages.length) {
+                voltmeter.setComputedVoltage(0f);
+                continue;
+            }
+            double voltage = nodeVoltages[aRemap] - nodeVoltages[bRemap];
+            voltmeter.setComputedVoltage((float) Math.abs(voltage));
         }
     }
 
@@ -358,6 +436,7 @@ public final class CircuitPhysics {
         private final double resistance;
         private final Wire wire;
         private final Resistor resistor;
+        private final Ammeter ammeter;
 
         private Edge(int aIndex, int bIndex, double resistance) {
             this.aIndex = aIndex;
@@ -365,6 +444,7 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = null;
             this.resistor = null;
+            this.ammeter = null;
         }
 
         private Edge(int aIndex, int bIndex, double resistance, Wire wire) {
@@ -373,6 +453,7 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = wire;
             this.resistor = null;
+            this.ammeter = null;
         }
 
         private Edge(int aIndex, int bIndex, double resistance, Resistor resistor) {
@@ -381,6 +462,16 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = null;
             this.resistor = resistor;
+            this.ammeter = null;
+        }
+
+        private Edge(int aIndex, int bIndex, double resistance, Ammeter ammeter) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = null;
+            this.ammeter = ammeter;
         }
     }
 
@@ -392,9 +483,12 @@ public final class CircuitPhysics {
         private final List<Battery> batteries;
         private final java.util.Set<Wire> wires;
         private final java.util.Set<Resistor> resistors;
+        private final java.util.Set<Ammeter> ammeters;
+        private final int[] nodeRemap;
 
         private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
-                List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors) {
+                List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors,
+                java.util.Set<Ammeter> ammeters, int[] nodeRemap) {
             this.nodeCount = nodeCount;
             this.groundIndex = groundIndex;
             this.positiveIndex = positiveIndex;
@@ -402,6 +496,8 @@ public final class CircuitPhysics {
             this.batteries = batteries;
             this.wires = wires;
             this.resistors = resistors;
+            this.ammeters = ammeters;
+            this.nodeRemap = nodeRemap;
         }
     }
 
@@ -453,6 +549,7 @@ public final class CircuitPhysics {
         java.util.List<Edge> prunedEdges = new java.util.ArrayList<>();
         java.util.Set<Wire> prunedWires = new java.util.HashSet<>();
         java.util.Set<Resistor> prunedResistors = new java.util.HashSet<>();
+        java.util.Set<Ammeter> prunedAmmeters = new java.util.HashSet<>();
         for (Edge edge : edges) {
             int a = remap[edge.aIndex];
             int b = remap[edge.bIndex];
@@ -464,6 +561,9 @@ public final class CircuitPhysics {
                 } else if (edge.resistor != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.resistor);
                     prunedResistors.add(edge.resistor);
+                } else if (edge.ammeter != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.ammeter);
+                    prunedAmmeters.add(edge.ammeter);
                 } else {
                     remapped = new Edge(a, b, edge.resistance);
                 }
@@ -484,9 +584,9 @@ public final class CircuitPhysics {
         int remappedPositive = remap[positiveIndex];
         if (remappedGround < 0 || remappedPositive < 0) {
             return new GraphView(0, remappedGround, remappedPositive, java.util.Collections.emptyList(),
-                    java.util.Collections.emptyList(), prunedWires, prunedResistors);
+                    java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedAmmeters, remap);
         }
         return new GraphView(newCount, remappedGround, remappedPositive, prunedEdges,
-                prunedBatteries, prunedWires, prunedResistors);
+                prunedBatteries, prunedWires, prunedResistors, prunedAmmeters, remap);
     }
 }

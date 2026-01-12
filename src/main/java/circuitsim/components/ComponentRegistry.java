@@ -10,6 +10,8 @@ public final class ComponentRegistry {
     static {
         register("Battery", (x, y) -> new Battery(x, y));
         register("Resistor", (x, y) -> new Resistor(x, y));
+        register("Voltmeter", (x, y) -> new Voltmeter(x, y));
+        register("Ammeter", (x, y) -> new Ammeter(x, y));
     }
 
     private ComponentRegistry() {

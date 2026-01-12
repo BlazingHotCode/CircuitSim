@@ -1,9 +1,8 @@
 package circuitsim.components;
 
-import java.awt.FontMetrics;
-import java.awt.Graphics2D;
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
+import java.awt.Graphics2D;
 
 public class Resistor extends CircuitComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 4;

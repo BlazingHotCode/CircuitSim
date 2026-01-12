@@ -116,6 +116,16 @@ public abstract class CircuitComponent implements PropertyOwner {
         connectionPoints.add(new ConnectionPoint(this, relativeX, relativeY));
     }
 
+    public int getConnectionPointWorldX(ConnectionPoint point) {
+        double[] rotated = getRotatedPoint(point.getX(), point.getY());
+        return circuitsim.ui.Grid.snap((int) Math.round(rotated[0]));
+    }
+
+    public int getConnectionPointWorldY(ConnectionPoint point) {
+        double[] rotated = getRotatedPoint(point.getX(), point.getY());
+        return circuitsim.ui.Grid.snap((int) Math.round(rotated[1]));
+    }
+
     public void addConnection(ConnectionPoint point) {
         if (point == null) {
             return;
@@ -248,8 +258,8 @@ public abstract class CircuitComponent implements PropertyOwner {
         int radius = dotSize / 2;
         g2.setColor(circuitsim.ui.Colors.CONNECTION_DOT);
         for (ConnectionPoint point : connectionPoints) {
-            int centerX = point.getX();
-            int centerY = point.getY();
+            int centerX = getConnectionPointWorldX(point);
+            int centerY = getConnectionPointWorldY(point);
             g2.fillOval(centerX - radius, centerY - radius, dotSize, dotSize);
         }
     }
@@ -311,6 +321,20 @@ public abstract class CircuitComponent implements PropertyOwner {
         g2.rotate(textAngle);
         g2.drawString(text, (float) (textX - centerX), (float) (textY - centerY));
         g2.setTransform(originalTransform);
+    }
+
+    private double[] getRotatedPoint(int pointX, int pointY) {
+        if (rotationQuarterTurns == 0) {
+            return new double[] { pointX, pointY };
+        }
+        double centerX = x + (width / 2.0);
+        double centerY = y + (height / 2.0);
+        double angle = getRotationRadians();
+        double dx = pointX - centerX;
+        double dy = pointY - centerY;
+        double rotatedX = (dx * Math.cos(angle)) - (dy * Math.sin(angle));
+        double rotatedY = (dx * Math.sin(angle)) + (dy * Math.cos(angle));
+        return new double[] { centerX + rotatedX, centerY + rotatedY };
     }
 
     protected abstract void drawComponent(Graphics2D g2);
