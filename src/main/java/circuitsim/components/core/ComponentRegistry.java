@@ -1,16 +1,10 @@
 package circuitsim.components.core;
 
-import circuitsim.components.electrical.Battery;
-import circuitsim.components.electrical.Ground;
-import circuitsim.components.electrical.Resistor;
-import circuitsim.components.electrical.Source;
-import circuitsim.components.electrical.Switch;
-import circuitsim.components.instruments.Ammeter;
-import circuitsim.components.instruments.Voltmeter;
-import circuitsim.components.logic.LogicGateFactory;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Registry of component types exposed to the UI.
@@ -18,22 +12,19 @@ import java.util.List;
 public final class ComponentRegistry {
     private static final List<Entry> ENTRIES = new ArrayList<>();
     private static final List<Group> GROUPS = new ArrayList<>();
+    private static final List<BuiltinComponentDiscovery.Definition> BUILTINS;
+    private static final Map<String, ComponentFactory> TYPE_FACTORIES = new HashMap<>();
     private static final String DEFAULT_GROUP = "General";
 
     static {
         ensureGroup("Custom");
-        register("Sources", "Battery", (x, y) -> new Battery(x, y));
-        register("Sources", "Source", (x, y) -> new Source(x, y));
-        registerLogicGate("Logic", "NAND", "NAND");
-        registerLogicGate("Logic", "AND", "AND");
-        registerLogicGate("Logic", "OR", "OR");
-        registerLogicGate("Logic", "XOR", "XOR");
-        registerLogicGate("Logic", "NOT", "NOT");
-        register("Passive", "Resistor", (x, y) -> new Resistor(x, y));
-        register("Meters", "Voltmeter", (x, y) -> new Voltmeter(x, y));
-        register("Meters", "Ammeter", (x, y) -> new Ammeter(x, y));
-        register("Controls", "Switch (User)", (x, y) -> new Switch(x, y));
-        register("Reference", "Ground", (x, y) -> new Ground(x, y));
+        BUILTINS = Collections.unmodifiableList(BuiltinComponentDiscovery.discover());
+        for (BuiltinComponentDiscovery.Definition builtin : BUILTINS) {
+            if (builtin == null) {
+                continue;
+            }
+            registerBuiltin(builtin);
+        }
     }
 
     private ComponentRegistry() {
@@ -57,33 +48,66 @@ public final class ComponentRegistry {
      * @param factory factory for creating components
      */
     public static void register(String groupName, String name, ComponentFactory factory) {
-        Entry entry = new Entry(groupName, name, null, factory);
+        Entry entry = new Entry(groupName, name, null, null, factory);
         ENTRIES.add(entry);
         getOrCreateGroup(groupName).entries.add(entry);
     }
     
     /**
-     * Registers a logic gate with the factory system.
-     * EXTENSIBLE: Add new logic gate types through factory.
-     *
-     * @param groupName group label shown in the UI
-     * @param name label shown in the UI  
-     * @param gateType logic gate type name
+     * Registers a custom component entry under a group.
      */
-    public static void registerLogicGate(String groupName, String name, String gateType) {
-        Entry entry = new Entry(groupName, name, null, (x, y) -> LogicGateFactory.createGate(gateType, x, y));
+    public static void registerCustom(String groupName, String name, String customId,
+                                      ComponentFactory factory) {
+        Entry entry = new Entry(groupName, name, "Custom", customId, factory);
         ENTRIES.add(entry);
         getOrCreateGroup(groupName).entries.add(entry);
     }
 
     /**
-     * Registers a custom component entry under a group.
+     * Restores the given group entries to the discovered built-ins for that group.
+     * Useful when the palette differs between main mode and editor mode.
      */
-    public static void registerCustom(String groupName, String name, String customId,
-                                      ComponentFactory factory) {
-        Entry entry = new Entry(groupName, name, customId, factory);
-        ENTRIES.add(entry);
-        getOrCreateGroup(groupName).entries.add(entry);
+    public static void restoreGroupToBuiltins(String groupName) {
+        if (groupName == null || groupName.trim().isEmpty()) {
+            return;
+        }
+        Group group = null;
+        for (Group existing : GROUPS) {
+            if (existing.name.equals(groupName)) {
+                group = existing;
+                break;
+            }
+        }
+        if (group == null) {
+            group = getOrCreateGroup(groupName);
+        }
+        final String target = groupName;
+        ENTRIES.removeIf(entry -> target.equals(entry.groupName));
+        group.entries.clear();
+        for (BuiltinComponentDiscovery.Definition builtin : BUILTINS) {
+            if (builtin == null) {
+                continue;
+            }
+            if (!target.equals(builtin.group())) {
+                continue;
+            }
+            registerBuiltin(builtin);
+        }
+    }
+
+    /**
+     * Creates a built-in component instance by serialized type id.
+     * This works even if the component is not currently visible in the palette.
+     */
+    public static CircuitComponent createBuiltinFromType(String type, int x, int y) {
+        if (type == null) {
+            return null;
+        }
+        ComponentFactory factory = TYPE_FACTORIES.get(type);
+        if (factory == null) {
+            return null;
+        }
+        return factory.create(x, y);
     }
 
     /**
@@ -181,12 +205,14 @@ public final class ComponentRegistry {
     public static final class Entry {
         private final String groupName;
         private final String name;
+        private final String type;
         private final String customId;
         private final ComponentFactory factory;
 
-        private Entry(String groupName, String name, String customId, ComponentFactory factory) {
+        private Entry(String groupName, String name, String type, String customId, ComponentFactory factory) {
             this.groupName = groupName;
             this.name = name;
+            this.type = type;
             this.customId = customId;
             this.factory = factory;
         }
@@ -210,6 +236,13 @@ public final class ComponentRegistry {
          */
         public String getCustomId() {
             return customId;
+        }
+
+        /**
+         * @return serialized type id for this entry, or null when not applicable
+         */
+        public String getType() {
+            return type;
         }
 
         /**
@@ -253,5 +286,22 @@ public final class ComponentRegistry {
         public List<Entry> getEntries() {
             return Collections.unmodifiableList(entries);
         }
+    }
+
+    private static void registerBuiltin(BuiltinComponentDiscovery.Definition builtin) {
+        if (builtin == null) {
+            return;
+        }
+        // Always install type factories for deserialization, even if not palette-visible.
+        TYPE_FACTORIES.putIfAbsent(builtin.type, builtin.factory);
+        for (String alias : builtin.aliases) {
+            TYPE_FACTORIES.putIfAbsent(alias, builtin.factory);
+        }
+        if (!builtin.paletteVisible) {
+            return;
+        }
+        Entry entry = new Entry(builtin.group, builtin.paletteName, builtin.type, null, builtin.factory);
+        ENTRIES.add(entry);
+        getOrCreateGroup(builtin.group).entries.add(entry);
     }
 }

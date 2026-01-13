@@ -2,7 +2,6 @@ package circuitsim.components.instruments;
 
 import circuitsim.components.core.*;
 import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
 
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
@@ -15,6 +14,7 @@ import java.util.Locale;
 /**
  * Voltmeter component that displays computed voltage.
  */
+@BuiltinComponent(group = "Meters", groupOrder = 40, paletteOrder = 10)
 public class Voltmeter extends TwoTerminalComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 3;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;

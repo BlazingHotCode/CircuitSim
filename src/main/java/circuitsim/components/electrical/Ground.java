@@ -1,9 +1,7 @@
 package circuitsim.components.electrical;
 
 import circuitsim.components.core.*;
-import circuitsim.components.properties.*;
 import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.Graphics2D;
@@ -11,6 +9,7 @@ import java.awt.Graphics2D;
 /**
  * Ground reference component.
  */
+@BuiltinComponent(group = "Reference", groupOrder = 60, paletteOrder = 10)
 public class Ground extends SingleTerminalComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 2;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
@@ -21,17 +20,12 @@ public class Ground extends SingleTerminalComponent {
      * @param y world Y coordinate
      */
     public Ground(int x, int y) {
-        super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, 0.5f, 0f);
+        super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, 0.5f, 0f, false);
     }
 
     /**
      * {@inheritDoc}
      */
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
-    }
-
     /**
      * {@inheritDoc}
      */

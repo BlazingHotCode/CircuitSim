@@ -1,10 +1,10 @@
 package circuitsim.components.logic;
 
-import circuitsim.components.core.*;
-import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
+import circuitsim.components.core.CircuitComponent;
+import circuitsim.components.core.ConnectionPoint;
+import circuitsim.components.wiring.Wire;
 import circuitsim.physics.LogicPhysics.LogicGateInputs;
+import java.util.Collection;
 
 /**
  * Interface for all logic gates to ensure consistent behavior.
@@ -18,7 +18,7 @@ public interface LogicGateInterface {
      * @param wires collection of wires in circuit
      * @return object containing all input voltages
      */
-    LogicGateInputs readInputs(circuitsim.components.core.CircuitComponent gate, java.util.Collection<circuitsim.components.wiring.Wire> wires);
+    LogicGateInputs readInputs(CircuitComponent gate, Collection<Wire> wires);
     
     /**
      * Evaluates the gate's logic function.
@@ -31,7 +31,7 @@ public interface LogicGateInterface {
      * Gets the output connection point of the logic gate.
      * @return output connection point, or null if not found
      */
-    circuitsim.components.core.ConnectionPoint getOutputPoint();
+    ConnectionPoint getOutputPoint();
     
     /**
      * Gets the number of input connections this gate accepts.

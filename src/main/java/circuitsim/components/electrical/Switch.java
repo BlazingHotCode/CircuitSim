@@ -1,9 +1,6 @@
 package circuitsim.components.electrical;
 
 import circuitsim.components.core.*;
-import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.FontMetrics;
@@ -12,6 +9,7 @@ import java.awt.Graphics2D;
 /**
  * User-toggleable switch component.
  */
+@BuiltinComponent(group = "Controls", paletteName = "Switch (User)", groupOrder = 50, paletteOrder = 10)
 public class Switch extends TwoTerminalComponent implements SwitchLike {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 3;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
@@ -24,7 +22,7 @@ public class Switch extends TwoTerminalComponent implements SwitchLike {
      * @param y world Y coordinate
      */
     public Switch(int x, int y) {
-        super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH);
+        super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH, false);
         this.closed = false;
     }
 
@@ -62,11 +60,6 @@ public class Switch extends TwoTerminalComponent implements SwitchLike {
     /**
      * {@inheritDoc}
      */
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
-    }
-
     /**
      * {@inheritDoc}
      */

@@ -2,8 +2,6 @@ package circuitsim.components.instruments;
 
 import circuitsim.components.core.*;
 import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.FontMetrics;
@@ -15,6 +13,7 @@ import java.util.Locale;
 /**
  * Ammeter component that displays computed current.
  */
+@BuiltinComponent(group = "Meters", groupOrder = 40, paletteOrder = 20)
 public class Ammeter extends TwoTerminalComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 3;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;

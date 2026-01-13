@@ -2,8 +2,6 @@ package circuitsim.components.electrical;
 
 import circuitsim.components.core.*;
 import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.FontMetrics;
@@ -12,6 +10,7 @@ import java.awt.Graphics2D;
 /**
  * Battery component with voltage and internal resistance.
  */
+@BuiltinComponent(group = "Sources", groupOrder = 10, paletteOrder = 10)
 public class Battery extends TwoTerminalComponent {
     private static final float TOP_PAD_RATIO = 0.5f;
     private static final float BOTTOM_PAD_RATIO = 1f / 3f;

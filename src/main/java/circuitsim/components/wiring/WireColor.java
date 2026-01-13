@@ -1,7 +1,5 @@
 package circuitsim.components.wiring;
 
-import circuitsim.components.core.*;
-
 import java.awt.Color;
 
 /**

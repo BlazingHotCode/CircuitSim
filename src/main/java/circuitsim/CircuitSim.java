@@ -232,14 +232,6 @@ public class CircuitSim {
     /**
      * Builds the layered pane that hosts the canvas and floating panels.
      */
-    private static JLayeredPane buildLayeredPane(CircuitPanel circuitPanel,
-                                                 WirePalettePanel wirePalettePanel,
-                                                 ClearBoardPanel clearBoardPanel,
-                                                 ComponentBarPanel componentBarPanel) {
-        return buildLayeredPane(circuitPanel, null, wirePalettePanel, null, clearBoardPanel,
-                null, componentBarPanel, null, null, null);
-    }
-
     private static JLayeredPane buildLayeredPane(CircuitPanel mainPanel,
                                                  CircuitPanel editorPanel,
                                                  WirePalettePanel mainPalette,
@@ -366,10 +358,7 @@ public class CircuitSim {
             ComponentRegistry.registerCustom("Custom", definition.getName(), definition.getId(),
                     (x, y) -> new CustomComponent(x, y, definition));
         }
-        ComponentRegistry.ensureGroup("IO");
-        ComponentRegistry.clearGroup("IO");
-        ComponentRegistry.register("IO", "Input", (x, y) -> new CustomInputPort(x, y));
-        ComponentRegistry.register("IO", "Output", (x, y) -> new CustomOutputPort(x, y));
+        ComponentRegistry.restoreGroupToBuiltins("IO");
     }
 
     private static void enterEditor(CustomComponentDefinition definition, CustomComponentLibrary library,

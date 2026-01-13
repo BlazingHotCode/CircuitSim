@@ -18,7 +18,9 @@ wires, then the solver continuously recomputes values as you move/rotate/edit th
 
 ## Requirements
 
-- JDK 11+
+- JDK 21+
+
+If you're using VS Code, point the Java extension at a JDK 21 install (workspace defaults live in `.vscode/settings.json`).
 
 ## Quick Start
 
@@ -31,7 +33,7 @@ java -jar dist/CircuitSim-<version>.jar
 **Run from source**
 
 ```sh
-javac -d out $(find src/main/java -name "*.java")
+javac --release 21 -d out $(find src/main/java -name "*.java")
 java -cp out circuitsim.CircuitSim
 ```
 
@@ -39,7 +41,7 @@ java -cp out circuitsim.CircuitSim
 
 ```sh
 rm -rf out && mkdir -p out
-javac -d out $(find src/main/java -name "*.java")
+javac --release 21 -d out $(find src/main/java -name "*.java")
 jar cfm dist/CircuitSim.jar dist/manifest.txt -C out .
 ```
 

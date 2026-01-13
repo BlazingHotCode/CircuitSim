@@ -2,8 +2,6 @@ package circuitsim.components.electrical;
 
 import circuitsim.components.core.*;
 import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.Color;
@@ -12,12 +10,13 @@ import java.awt.Graphics2D;
 /**
  * Toggleable source component for testing circuits.
  */
+@BuiltinComponent(group = "Sources", groupOrder = 10, paletteOrder = 20)
 public class Source extends SingleTerminalComponent implements SwitchLike {
     private static final int DEFAULT_SIZE = Grid.SIZE * 2;
     private boolean active;
 
     public Source(int x, int y) {
-        super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 1f, 0.5f);
+        super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 1f, 0.5f, false);
         setDisplayName("Source");
         addProperty(new StringProperty("Name", this::getDisplayName, this::setDisplayName, false, true));
         addProperty(new BooleanProperty("Active", this::isActive, this::setActive, false));
@@ -45,11 +44,6 @@ public class Source extends SingleTerminalComponent implements SwitchLike {
     @Override
     public void setComputedAmpere(float computedAmpere) {
         // No-op for now; source uses active toggle for testing.
-    }
-
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
     }
 
     @Override
