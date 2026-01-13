@@ -50,6 +50,9 @@ public final class LogicPhysics {
             wire.setLogicPowered(false);
         }
         seedLogicInputs(components, wires);
+        // Ensure gate inputs can read logic state through multi-segment wire networks
+        // (including custom-component expansion wires) before evaluating gates.
+        propagateLogicPower(wires);
         for (CircuitComponent component : components) {
             if (component instanceof NANDGate) {
                 updateNANDGate((NANDGate) component, wires);
@@ -63,6 +66,7 @@ public final class LogicPhysics {
                 updateNOTGate((NOTGate) component, wires);
             }
         }
+        // Spread any newly-driven outputs through connected networks.
         propagateLogicPower(wires);
         updateCustomOutputPorts(components, wires);
     }

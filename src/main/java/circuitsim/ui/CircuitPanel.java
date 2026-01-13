@@ -120,6 +120,7 @@ public class CircuitPanel extends JPanel {
             java.util.Collections::emptyList;
     private java.util.function.Function<String, circuitsim.custom.CustomComponentDefinition> customDefinitionResolver =
             id -> null;
+    private final Map<String, circuitsim.custom.CustomComponentDefinition> embeddedCustomDefinitions = new HashMap<>();
     private java.util.function.Function<BoardState, BoardState> boardLoadTransform = state -> state;
     private boolean treatCustomOutputsAsGround;
     private Runnable changeListener = () -> {};
@@ -768,7 +769,9 @@ public class CircuitPanel extends JPanel {
         long abs = Math.abs(seed);
         int baseX = 1_000_000 + (int) ((abs % 997) * 10_000L);
         int baseY = 1_000_000 + (int) (((abs / 997) % 997) * 10_000L);
-        return new java.awt.Point(baseX, baseY);
+        // Keep offsets grid-aligned so that existing snapped wire endpoints inside the
+        // definition continue to land on the same snapped connection points after offsetting.
+        return new java.awt.Point(circuitsim.ui.Grid.snap(baseX), circuitsim.ui.Grid.snap(baseY));
     }
 
     private CircuitComponent createComponentFromStateForSimulation(BoardState.ComponentState state) {
@@ -794,6 +797,16 @@ public class CircuitPanel extends JPanel {
                 return new CustomOutputPort(state.getX(), state.getY());
             case "Source":
                 return new circuitsim.components.electrical.Source(state.getX(), state.getY());
+            case "NANDGate":
+                return new circuitsim.components.logic.NANDGate(state.getX(), state.getY());
+            case "ANDGate":
+                return new circuitsim.components.logic.ANDGate(state.getX(), state.getY());
+            case "ORGate":
+                return new circuitsim.components.logic.ORGate(state.getX(), state.getY());
+            case "XORGate":
+                return new circuitsim.components.logic.XORGate(state.getX(), state.getY());
+            case "NOTGate":
+                return new circuitsim.components.logic.NOTGate(state.getX(), state.getY());
             default:
                 return null;
         }
@@ -1121,6 +1134,13 @@ public class CircuitPanel extends JPanel {
         if (load) {
             attemptLoadAutosave();
         }
+    }
+
+    /**
+     * Forces the current board state (including custom component definitions) to be written to autosave.
+     */
+    public void flushAutosave() {
+        writeAutosave(buildBoardState());
     }
 
     /**
@@ -2089,7 +2109,26 @@ public class CircuitPanel extends JPanel {
                     wire.getWireColor(),
                     wire.isShowData()));
         }
-        List<circuitsim.custom.CustomComponentDefinition> customComponents = customDefinitionsSupplier.get();
+        java.util.LinkedHashMap<String, circuitsim.custom.CustomComponentDefinition> customById =
+                new java.util.LinkedHashMap<>();
+        for (circuitsim.custom.CustomComponentDefinition definition : customDefinitionsSupplier.get()) {
+            if (definition == null || definition.getId() == null) {
+                continue;
+            }
+            customById.put(definition.getId(), definition);
+        }
+        for (CircuitComponent component : components) {
+            if (!(component instanceof CustomComponent)) {
+                continue;
+            }
+            circuitsim.custom.CustomComponentDefinition definition = ((CustomComponent) component).getDefinition();
+            if (definition == null || definition.getId() == null) {
+                continue;
+            }
+            customById.putIfAbsent(definition.getId(), definition);
+        }
+        List<circuitsim.custom.CustomComponentDefinition> customComponents =
+                new java.util.ArrayList<>(customById.values());
         return new BoardState(BoardState.CURRENT_VERSION, activeWireColor, componentStates, wireStates,
                 customComponents);
     }
@@ -2143,6 +2182,13 @@ public class CircuitPanel extends JPanel {
         if (state == null) {
             applyingState = false;
             return;
+        }
+        embeddedCustomDefinitions.clear();
+        for (circuitsim.custom.CustomComponentDefinition definition : state.getCustomComponents()) {
+            if (definition == null || definition.getId() == null) {
+                continue;
+            }
+            embeddedCustomDefinitions.put(definition.getId(), definition);
         }
         setActiveWireColor(state.getActiveWireColor());
         for (BoardState.ComponentState componentState : state.getComponents()) {
@@ -2218,6 +2264,9 @@ public class CircuitPanel extends JPanel {
             case "Custom":
                 circuitsim.custom.CustomComponentDefinition definition =
                         customDefinitionResolver.apply(state.getCustomId());
+                if (definition == null) {
+                    definition = embeddedCustomDefinitions.get(state.getCustomId());
+                }
                 if (definition == null) {
                     return null;
                 }

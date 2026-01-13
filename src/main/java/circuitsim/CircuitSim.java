@@ -89,25 +89,21 @@ public class CircuitSim {
             });
             TempModePanel tempModePanel = tempModePanelHolder[0];
             tempModePanel.setVisible(library.isTempMode());
-            if (library.isTempMode()) {
-                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getTempAutosavePath(), true);
-            } else {
-                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getAutosavePath(), false);
-            }
 
             CustomEditorPanel[] editorPanelControlsHolder = new CustomEditorPanel[1];
             editorPanelControlsHolder[0] = new CustomEditorPanel(() -> {
                 CustomComponentDefinition updated = saveEditorDefinition(editorPanel, editingDefinition[0],
-                        library, frame);
-                if (updated == null) {
-                    return;
-                }
-                mainPanel.updateCustomComponentInstances(updated.getId(), updated);
-                editingDefinition[0] = null;
-                configureRegistryForMain(library);
-                mainBar.refreshGroups();
-                exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
-                        mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
+	                        library, frame);
+	                if (updated == null) {
+	                    return;
+	                }
+	                mainPanel.updateCustomComponentInstances(updated.getId(), updated);
+	                mainPanel.flushAutosave();
+	                editingDefinition[0] = null;
+	                configureRegistryForMain(library);
+	                mainBar.refreshGroups();
+	                exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
+	                        mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
             }, () -> {
                 editingDefinition[0] = null;
                 configureRegistryForMain(library);
@@ -130,8 +126,17 @@ public class CircuitSim {
                         library, frame);
                 if (updated != null) {
                     editingDefinition[0] = updated;
+                    mainPanel.flushAutosave();
                 }
             });
+
+            // Load autosave only after custom-component resolvers are configured so that
+            // saved Custom component instances can be reconstructed on startup.
+            if (library.isTempMode()) {
+                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getTempAutosavePath(), true);
+            } else {
+                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getAutosavePath(), true);
+            }
 
             mainPanel.setBoardLoadTransform(state -> handleBoardLoad(state, library, tempModePanel,
                     mainBar, mainPanel, frame));
