@@ -231,6 +231,11 @@ public final class CircuitPhysics {
             groundPoint = getOutputPortPoint(outputPorts.get(0));
         }
         Integer groundIndex = groundPoint == null ? null : nodeIndex.get(groundPoint);
+        if ((groundIndex == null || groundIndex < 0) && primaryBattery != null) {
+            java.awt.Point fallbackGround = getBatteryNegativePoint(primaryBattery);
+            groundPoint = fallbackGround;
+            groundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
+        }
         if (groundIndex == null || groundIndex < 0) {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
@@ -243,6 +248,13 @@ public final class CircuitPhysics {
                 primaryBattery.getConnectionPointWorldX(positive),
                 primaryBattery.getConnectionPointWorldY(positive));
         GraphView pruned = pruneToConnected(nodeCount, edges, batteries, groundIndex, positiveIndex);
+        if (pruned.edges.isEmpty() && primaryBattery != null && grounds != null && !grounds.isEmpty()) {
+            java.awt.Point fallbackGround = getBatteryNegativePoint(primaryBattery);
+            Integer fallbackGroundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
+            if (fallbackGroundIndex != null && fallbackGroundIndex >= 0 && fallbackGroundIndex != groundIndex) {
+                pruned = pruneToConnected(nodeCount, edges, batteries, fallbackGroundIndex, positiveIndex);
+            }
+        }
         if (pruned.edges.isEmpty()) {
             resetComputedValues(edges);
             resetUnusedValues(edges, wires, pruned);
@@ -433,18 +445,16 @@ public final class CircuitPhysics {
                 continue;
             }
             ConnectionPoint point = points.get(0);
-            Integer originalIndex = nodeIndex.get(new Point(
-                    ground.getConnectionPointWorldX(point),
-                    ground.getConnectionPointWorldY(point)));
+            int groundX = ground.getConnectionPointWorldX(point);
+            int groundY = ground.getConnectionPointWorldY(point);
+            Integer originalIndex = nodeIndex.get(new Point(groundX, groundY));
             if (originalIndex == null) {
                 ground.setActiveIndicator(false);
                 continue;
             }
             int remapped = pruned.nodeRemap[originalIndex];
             boolean nodeActive = remapped >= 0 && activeNodes.contains(remapped);
-            ground.setActiveIndicator(nodeActive && isWirePoweredAt(wires,
-                    ground.getConnectionPointWorldX(point),
-                    ground.getConnectionPointWorldY(point)));
+            ground.setActiveIndicator(nodeActive && isWirePoweredAt(wires, groundX, groundY));
         }
     }
 
@@ -552,30 +562,42 @@ public final class CircuitPhysics {
         if (primaryBattery == null) {
             return null;
         }
-        ConnectionPoint negative = primaryBattery.getNegativePoint();
-        return new java.awt.Point(primaryBattery.getConnectionPointWorldX(negative),
-                primaryBattery.getConnectionPointWorldY(negative));
+        return getBatteryNegativePoint(primaryBattery);
     }
 
     private static boolean isWireConnectedAt(Collection<Wire> wires, int x, int y) {
         if (wires == null || wires.isEmpty()) {
             return false;
         }
+        int sx = Grid.snap(x);
+        int sy = Grid.snap(y);
         for (Wire wire : wires) {
             WireNode start = wire.getStart();
             WireNode end = wire.getEnd();
             if (start != null
-                    && Grid.snap(start.getX()) == x
-                    && Grid.snap(start.getY()) == y) {
+                    && Grid.snap(start.getX()) == sx
+                    && Grid.snap(start.getY()) == sy) {
                 return true;
             }
             if (end != null
-                    && Grid.snap(end.getX()) == x
-                    && Grid.snap(end.getY()) == y) {
+                    && Grid.snap(end.getX()) == sx
+                    && Grid.snap(end.getY()) == sy) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static java.awt.Point getBatteryNegativePoint(Battery battery) {
+        if (battery == null) {
+            return null;
+        }
+        ConnectionPoint negative = battery.getNegativePoint();
+        if (negative == null) {
+            return null;
+        }
+        return new java.awt.Point(battery.getConnectionPointWorldX(negative),
+                battery.getConnectionPointWorldY(negative));
     }
 
     private static void addInputBatteries(List<Battery> batteries, List<CustomInputPort> inputPorts,
