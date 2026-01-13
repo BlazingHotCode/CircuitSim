@@ -1,27 +1,46 @@
 # CircuitSim
 
 Interactive, real-time circuit simulator built with Java Swing. Design circuits on a grid, wire them up,
-and watch live current flow with short-circuit detection and custom component support.
+and watch the simulation update live (analog voltages/currents + basic digital logic gates).
+
+CircuitSim is designed as a “sandbox” editor: you place components from a palette, connect them with
+wires, then the solver continuously recomputes values as you move/rotate/edit the circuit.
 
 ## Features
 
-- Powerful custom component system with a dedicated editor, input/output ports, nesting, and local/temp libraries.
-- Real-time circuit solver with current/voltage updates and short-circuit detection.
-- Drag-and-drop component palette with grouped components and custom components.
-- Wire palette with selectable colors plus optional current labels.
-- Grid-snapped placement, multi-select, rotate, resize, and move tools.
-- Properties panel for editing component parameters and titles.
-- Save/load JSON files, autosave, undo/redo, and temporary custom-component mode.
+- **Analog simulation**: continuous DC-style solver for voltages/currents with short-circuit detection.
+- **Digital logic simulation**: built-in logic gates (NAND/AND/OR/XOR/NOT) driving wires as 0V/5V signals.
+- **Custom components**: dedicated editor with input/output ports, nesting, and local + temporary libraries.
+- **Editor UX**: grid-snapped placement, multi-select, rotate, resize, pan, zoom, context menus.
+- **Component + wire palettes**: grouped components, drag-and-drop placement, selectable wire colors.
+- **Properties panel**: edit component parameters and titles in real time.
+- **Persistence**: save/load JSON boards, autosave, undo/redo, temp custom-component mode.
 
 ## Requirements
 
 - JDK 11+
 
-## Run
+## Quick Start
+
+**Run the prebuilt JAR**
+
+```sh
+java -jar dist/CircuitSim-<version>.jar
+```
+
+**Run from source**
 
 ```sh
 javac -d out $(find src/main/java -name "*.java")
 java -cp out circuitsim.CircuitSim
+```
+
+**Build a runnable JAR**
+
+```sh
+rm -rf out && mkdir -p out
+javac -d out $(find src/main/java -name "*.java")
+jar cfm dist/CircuitSim.jar dist/manifest.txt -C out .
 ```
 
 ## How To Use
@@ -63,15 +82,26 @@ java -cp out circuitsim.CircuitSim
 
 **Built-in groups**
 - Sources: Battery, Source (toggleable).
+- Logic: NAND, AND, OR, XOR, NOT.
 - Passive: Resistor.
 - Meters: Voltmeter, Ammeter.
 - Controls: Switch.
 - Reference: Ground.
 
+**Custom-component editor**
+- Ports: Input Port, Output Port (used for defining a custom component’s interface).
+
 **Custom components**
 - Create, edit, and delete custom components from the Custom group.
 - Editor mode adds Input/Output ports for defining custom interfaces.
 - Custom components can be nested and reused like built-ins.
+
+## Digital Logic Notes
+
+- Logic gates output either ~0V (LOW) or ~5V (HIGH) with a ~2.5V threshold.
+- Gate outputs drive connected wires; those wires are marked as “logic powered” internally so logic can
+  propagate even when the analog solver would otherwise show ~0 current.
+- Logic inputs enforce a single-wire-per-input connection rule to prevent ambiguous fan-in at the pin.
 
 ## Custom Components And Temp Mode
 
@@ -85,6 +115,7 @@ Use the "Go Back To Save" button to exit temp mode and return to local storage.
 
 **Board files**
 - Saved/loaded as JSON via the file chooser.
+- Example boards live in `saves/` (try loading `saves/1.json` or `saves/2.json`).
 
 **Autosave**
 - Windows: `%LOCALAPPDATA%\CircuitSimData\autosave.json`
@@ -94,6 +125,13 @@ Use the "Go Back To Save" button to exit temp mode and return to local storage.
 **Custom component storage**
 - Local: `.../CircuitSimData/CustomComponents`
 - Temp mode: `.../CircuitSimData/TempData`
+
+## Project Structure
+
+- `src/main/java/circuitsim/ui`: Swing UI (canvas, palettes, properties panel, custom editor UI).
+- `src/main/java/circuitsim/components`: Component types (electrical, instruments, wiring, logic, ports).
+- `src/main/java/circuitsim/physics`: Simulation code (analog solver + logic update pass).
+- `src/main/java/circuitsim/io` and `src/main/java/circuitsim/custom`: JSON persistence + custom-component library.
 
 ## License
 
