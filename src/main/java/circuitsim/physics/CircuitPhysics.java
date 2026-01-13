@@ -1,18 +1,19 @@
 package circuitsim.physics;
 
-import circuitsim.components.Ammeter;
-import circuitsim.components.Battery;
-import circuitsim.components.CircuitComponent;
-import circuitsim.components.ConnectionPoint;
-import circuitsim.components.CustomInputPort;
-import circuitsim.components.CustomOutputPort;
-import circuitsim.components.Ground;
-import circuitsim.components.Resistor;
-import circuitsim.components.Source;
-import circuitsim.components.SwitchLike;
-import circuitsim.components.Voltmeter;
-import circuitsim.components.Wire;
-import circuitsim.components.WireNode;
+import circuitsim.components.instruments.Ammeter;
+import circuitsim.components.electrical.Battery;
+import circuitsim.components.core.CircuitComponent;
+import circuitsim.components.core.ConnectionPoint;
+import circuitsim.components.logic.LogicGate;
+import circuitsim.components.ports.CustomInputPort;
+import circuitsim.components.ports.CustomOutputPort;
+import circuitsim.components.electrical.Ground;
+import circuitsim.components.electrical.Resistor;
+import circuitsim.components.electrical.Source;
+import circuitsim.components.core.SwitchLike;
+import circuitsim.components.instruments.Voltmeter;
+import circuitsim.components.wiring.Wire;
+import circuitsim.components.wiring.WireNode;
 import circuitsim.ui.Grid;
 import java.awt.Point;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ public final class CircuitPhysics {
     private static final double WIRE_RESISTANCE = 1e-9;
     private static final double MIN_RESISTANCE = 1e-9;
     private static final double SHORT_THRESHOLD = 1e-6;
+    private static final double LOGIC_INPUT_RESISTANCE = 2e4;
 
     /**
      * Prevent instantiation.
@@ -93,6 +95,7 @@ public final class CircuitPhysics {
         List<CustomOutputPort> outputPorts = new ArrayList<>();
         List<CustomInputPort> inputPorts = new ArrayList<>();
         List<Source> sources = new ArrayList<>();
+        List<LogicGate> logicGates = new ArrayList<>();
         for (CircuitComponent component : components) {
             if (component instanceof Resistor) {
                 Resistor resistor = (Resistor) component;
@@ -130,6 +133,8 @@ public final class CircuitPhysics {
                 inputPorts.add((CustomInputPort) component);
             } else if (component instanceof Source) {
                 sources.add((Source) component);
+            } else if (component instanceof LogicGate) {
+                logicGates.add((LogicGate) component);
             } else if (component instanceof SwitchLike) {
                 SwitchLike circuitSwitch = (SwitchLike) component;
                 switches.add(circuitSwitch);
@@ -175,8 +180,14 @@ public final class CircuitPhysics {
         if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
             groundPoint = getOutputPortPoint(outputPorts.get(0));
         }
+        if (groundPoint == null && !logicGates.isEmpty()) {
+            groundPoint = getLogicGateReferencePoint(logicGates.get(0));
+        }
+        LogicPhysics.updateLogicComponents(components, wires);
         addInputBatteries(batteries, inputPorts, groundPoint);
         addSourceBatteries(batteries, sources, groundPoint);
+        addLogicGateBatteries(batteries, logicGates, groundPoint);
+        addLogicGateInputLoads(edges, logicGates, nodeIndex, groundPoint);
         if (batteries.isEmpty()) {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
@@ -298,9 +309,12 @@ public final class CircuitPhysics {
         }
         updateVoltmeterValues(voltmeters, nodeIndex, pruned, nodeVoltages);
         resetUnusedValues(edges, wires, pruned);
+        
+        // Update logic components after analog simulation
+        LogicPhysics.updateLogicComponents(components, wires);
         resetSwitchValues(switches);
         updateOutputIndicators(outputPorts, nodeIndex, pruned, activeNodes);
-        updateGroundIndicators(groundComponents, nodeIndex, pruned, activeNodes);
+        updateGroundIndicators(groundComponents, nodeIndex, pruned, activeNodes, wires);
         return false;
     }
 
@@ -407,7 +421,8 @@ public final class CircuitPhysics {
     }
 
     private static void updateGroundIndicators(List<Ground> groundComponents, Map<Point, Integer> nodeIndex,
-                                               GraphView pruned, java.util.Set<Integer> activeNodes) {
+                                               GraphView pruned, java.util.Set<Integer> activeNodes,
+                                               Collection<Wire> wires) {
         if (groundComponents.isEmpty()) {
             return;
         }
@@ -426,8 +441,36 @@ public final class CircuitPhysics {
                 continue;
             }
             int remapped = pruned.nodeRemap[originalIndex];
-            ground.setActiveIndicator(remapped >= 0 && activeNodes.contains(remapped));
+            boolean nodeActive = remapped >= 0 && activeNodes.contains(remapped);
+            ground.setActiveIndicator(nodeActive && isWirePoweredAt(wires,
+                    ground.getConnectionPointWorldX(point),
+                    ground.getConnectionPointWorldY(point)));
         }
+    }
+
+    private static boolean isWirePoweredAt(Collection<Wire> wires, int x, int y) {
+        if (wires == null || wires.isEmpty()) {
+            return false;
+        }
+        int sx = Grid.snap(x);
+        int sy = Grid.snap(y);
+        for (Wire wire : wires) {
+            WireNode start = wire.getStart();
+            WireNode end = wire.getEnd();
+            if (start != null
+                    && Grid.snap(start.getX()) == sx
+                    && Grid.snap(start.getY()) == sy
+                    && wire.getComputedAmpere() > 0.0001f) {
+                return true;
+            }
+            if (end != null
+                    && Grid.snap(end.getX()) == sx
+                    && Grid.snap(end.getY()) == sy
+                    && wire.getComputedAmpere() > 0.0001f) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final class GroundAdapter extends Ground {
@@ -575,6 +618,47 @@ public final class CircuitPhysics {
         }
     }
 
+    private static void addLogicGateBatteries(List<Battery> batteries, List<LogicGate> logicGates,
+                                              java.awt.Point groundPoint) {
+        if (logicGates.isEmpty() || groundPoint == null) {
+            return;
+        }
+        for (LogicGate gate : logicGates) {
+            if (!gate.isOutputPowered()) {
+                continue;
+            }
+            ConnectionPoint output = gate.getOutputPoint();
+            if (output == null) {
+                continue;
+            }
+            int posX = gate.getConnectionPointWorldX(output);
+            int posY = gate.getConnectionPointWorldY(output);
+            batteries.add(new InputBatteryAdapter(posX, posY, groundPoint.x, groundPoint.y));
+        }
+    }
+
+    private static void addLogicGateInputLoads(List<Edge> edges, List<LogicGate> logicGates,
+                                               Map<Point, Integer> nodeIndex, java.awt.Point groundPoint) {
+        if (logicGates.isEmpty() || groundPoint == null) {
+            return;
+        }
+        int groundIndex = getNodeIndex(nodeIndex, groundPoint.x, groundPoint.y);
+        for (LogicGate gate : logicGates) {
+            for (ConnectionPoint point : gate.getConnectionPoints()) {
+                if (!gate.isInputPoint(point)) {
+                    continue;
+                }
+                int node = getNodeIndex(nodeIndex,
+                        gate.getConnectionPointWorldX(point),
+                        gate.getConnectionPointWorldY(point));
+                if (node == groundIndex) {
+                    continue;
+                }
+                edges.add(new Edge(node, groundIndex, LOGIC_INPUT_RESISTANCE));
+            }
+        }
+    }
+
     private static java.awt.Point getOutputPortPoint(CustomOutputPort outputPort) {
         if (outputPort == null) {
             return null;
@@ -598,6 +682,24 @@ public final class CircuitPhysics {
             }
         }
         return true;
+    }
+
+    private static java.awt.Point getLogicGateReferencePoint(LogicGate gate) {
+        if (gate == null) {
+            return null;
+        }
+        ConnectionPoint output = gate.getOutputPoint();
+        if (output != null) {
+            return new java.awt.Point(gate.getConnectionPointWorldX(output),
+                    gate.getConnectionPointWorldY(output));
+        }
+        List<ConnectionPoint> points = gate.getConnectionPoints();
+        if (points.isEmpty()) {
+            return null;
+        }
+        ConnectionPoint point = points.get(0);
+        return new java.awt.Point(gate.getConnectionPointWorldX(point),
+                gate.getConnectionPointWorldY(point));
     }
 
     private static final class InputBatteryAdapter extends Battery {

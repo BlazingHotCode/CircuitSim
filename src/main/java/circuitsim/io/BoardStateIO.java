@@ -1,6 +1,6 @@
 package circuitsim.io;
 
-import circuitsim.components.WireColor;
+import circuitsim.components.wiring.WireColor;
 import circuitsim.custom.CustomComponentDefinition;
 import circuitsim.custom.CustomComponentPort;
 import java.util.ArrayList;

@@ -1,7 +1,7 @@
 package circuitsim.ui;
 
-import circuitsim.components.CircuitComponent;
-import circuitsim.components.ComponentRegistry;
+import circuitsim.components.core.CircuitComponent;
+import circuitsim.components.core.ComponentRegistry;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Cursor;

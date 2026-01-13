@@ -1,9 +1,9 @@
 package circuitsim;
 
-import circuitsim.components.ComponentRegistry;
-import circuitsim.components.CustomComponent;
-import circuitsim.components.CustomInputPort;
-import circuitsim.components.CustomOutputPort;
+import circuitsim.components.core.ComponentRegistry;
+import circuitsim.components.ports.CustomComponent;
+import circuitsim.components.ports.CustomInputPort;
+import circuitsim.components.ports.CustomOutputPort;
 import circuitsim.custom.CustomComponentDefinition;
 import circuitsim.custom.CustomComponentLibrary;
 import circuitsim.custom.CustomComponentPort;
@@ -423,7 +423,7 @@ public class CircuitSim {
         }
         List<CustomComponentPort> inputs = new ArrayList<>();
         List<CustomComponentPort> outputs = new ArrayList<>();
-        for (circuitsim.components.CircuitComponent component : editorPanel.getComponentsSnapshot()) {
+        for (circuitsim.components.core.CircuitComponent component : editorPanel.getComponentsSnapshot()) {
             if (component instanceof CustomInputPort) {
                 inputs.add(new CustomComponentPort(component.getDisplayName(),
                         CustomComponentPort.Direction.INPUT));
@@ -555,13 +555,13 @@ public class CircuitSim {
         if (componentState == null || definition == null) {
             return points;
         }
-        circuitsim.components.CustomComponent shell =
-                new circuitsim.components.CustomComponent(componentState.getX(), componentState.getY(), definition);
+        circuitsim.components.ports.CustomComponent shell =
+                new circuitsim.components.ports.CustomComponent(componentState.getX(), componentState.getY(), definition);
         if (componentState.getWidth() > 0 && componentState.getHeight() > 0) {
             shell.setSize(componentState.getWidth(), componentState.getHeight());
         }
         shell.setRotationQuarterTurns(componentState.getRotationQuarterTurns());
-        for (circuitsim.components.ConnectionPoint point : shell.getConnectionPoints()) {
+        for (circuitsim.components.core.ConnectionPoint point : shell.getConnectionPoints()) {
             points.add(new java.awt.Point(shell.getConnectionPointWorldX(point),
                     shell.getConnectionPointWorldY(point)));
         }

@@ -1,17 +1,17 @@
 package circuitsim.ui;
 
-import circuitsim.components.Ammeter;
-import circuitsim.components.CircuitComponent;
-import circuitsim.components.ComponentRegistry;
-import circuitsim.components.ConnectionPoint;
-import circuitsim.components.CustomComponent;
-import circuitsim.components.CustomInputPort;
-import circuitsim.components.CustomOutputPort;
-import circuitsim.components.Switch;
-import circuitsim.components.Voltmeter;
-import circuitsim.components.Wire;
-import circuitsim.components.WireColor;
-import circuitsim.components.WireNode;
+import circuitsim.components.instruments.Ammeter;
+import circuitsim.components.core.CircuitComponent;
+import circuitsim.components.core.ComponentRegistry;
+import circuitsim.components.core.ConnectionPoint;
+import circuitsim.components.ports.CustomComponent;
+import circuitsim.components.ports.CustomInputPort;
+import circuitsim.components.ports.CustomOutputPort;
+import circuitsim.components.electrical.Switch;
+import circuitsim.components.instruments.Voltmeter;
+import circuitsim.components.wiring.Wire;
+import circuitsim.components.wiring.WireColor;
+import circuitsim.components.wiring.WireNode;
 import circuitsim.custom.CustomComponentDefinition;
 import circuitsim.io.BoardState;
 import circuitsim.io.BoardStateIO;
@@ -328,9 +328,9 @@ public class CircuitPanel extends JPanel {
                         selectComponent(inputPort);
                         recordHistoryState();
                         repaint();
-                    } else if (component instanceof circuitsim.components.Source
+                    } else if (component instanceof circuitsim.components.electrical.Source
                             && findConnectionPointAt(worldX, worldY) == null) {
-                        circuitsim.components.Source source = (circuitsim.components.Source) component;
+                        circuitsim.components.electrical.Source source = (circuitsim.components.electrical.Source) component;
                         source.setActive(!source.isActive());
                         selectComponent(source);
                         recordHistoryState();
@@ -593,8 +593,21 @@ public class CircuitPanel extends JPanel {
      */
     private void drawWires(Graphics2D g2) {
         SimulationView simulationView = buildSimulationView();
+        // Call before simulation hooks
+        for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
+            component.beforeSimulation();
+        }
+        
         boolean shortCircuit = CircuitPhysics.update(simulationView.components, simulationView.wires,
                 treatCustomOutputsAsGround);
+        
+        // Update logic components after analog simulation
+        circuitsim.physics.LogicPhysics.updateLogicComponents(simulationView.components, simulationView.wires);
+        
+        // Call after simulation hooks
+        for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
+            component.afterSimulation();
+        }
         if (shortCircuit != lastShortCircuit) {
             if (shortCircuit) {
                 shortCircuitPopup.showPopup();
@@ -764,23 +777,23 @@ public class CircuitPanel extends JPanel {
         }
         switch (state.getType()) {
             case "Battery":
-                return new circuitsim.components.Battery(state.getX(), state.getY());
+                return new circuitsim.components.electrical.Battery(state.getX(), state.getY());
             case "Resistor":
-                return new circuitsim.components.Resistor(state.getX(), state.getY());
+                return new circuitsim.components.electrical.Resistor(state.getX(), state.getY());
             case "Voltmeter":
-                return new circuitsim.components.Voltmeter(state.getX(), state.getY());
+                return new circuitsim.components.instruments.Voltmeter(state.getX(), state.getY());
             case "Ammeter":
-                return new circuitsim.components.Ammeter(state.getX(), state.getY());
+                return new circuitsim.components.instruments.Ammeter(state.getX(), state.getY());
             case "Switch":
-                return new circuitsim.components.Switch(state.getX(), state.getY());
+                return new circuitsim.components.electrical.Switch(state.getX(), state.getY());
             case "Ground":
-                return new circuitsim.components.Ground(state.getX(), state.getY());
+                return new circuitsim.components.electrical.Ground(state.getX(), state.getY());
             case "CustomInputPort":
                 return new CustomInputPort(state.getX(), state.getY());
             case "CustomOutputPort":
                 return new CustomOutputPort(state.getX(), state.getY());
             case "Source":
-                return new circuitsim.components.Source(state.getX(), state.getY());
+                return new circuitsim.components.electrical.Source(state.getX(), state.getY());
             default:
                 return null;
         }
@@ -1904,6 +1917,16 @@ public class CircuitPanel extends JPanel {
                     && endNode.getWireCount() > 0) {
                 return;
             }
+            
+            // Check logic gate input restrictions
+            if (isLogicInputConnectionAt(newWireStartNode.getX(), newWireStartNode.getY())
+                    && newWireStartNode.getWireCount() > 0) {
+                return;
+            }
+            if (endNode != null && isLogicInputConnectionAt(endNode.getX(), endNode.getY())
+                    && endNode.getWireCount() > 0) {
+                return;
+            }
         }
         if (newWireStartNode != null && endNode != null
                 && (newWireStartNode.getX() != endNode.getX()
@@ -2083,23 +2106,23 @@ public class CircuitPanel extends JPanel {
         Float internalResistance = null;
         Float resistance = null;
         Boolean closed = null;
-        if (component instanceof circuitsim.components.Battery) {
-            circuitsim.components.Battery battery = (circuitsim.components.Battery) component;
+        if (component instanceof circuitsim.components.electrical.Battery) {
+            circuitsim.components.electrical.Battery battery = (circuitsim.components.electrical.Battery) component;
             voltage = battery.getVoltage();
             internalResistance = battery.getInternalResistance();
-        } else if (component instanceof circuitsim.components.Resistor) {
-            circuitsim.components.Resistor resistor = (circuitsim.components.Resistor) component;
+        } else if (component instanceof circuitsim.components.electrical.Resistor) {
+            circuitsim.components.electrical.Resistor resistor = (circuitsim.components.electrical.Resistor) component;
             resistance = resistor.getResistance();
-        } else if (component instanceof circuitsim.components.Switch) {
-            circuitsim.components.Switch toggle = (circuitsim.components.Switch) component;
+        } else if (component instanceof circuitsim.components.electrical.Switch) {
+            circuitsim.components.electrical.Switch toggle = (circuitsim.components.electrical.Switch) component;
             closed = toggle.isClosed();
-        } else if (component instanceof circuitsim.components.Source) {
-            circuitsim.components.Source source = (circuitsim.components.Source) component;
+        } else if (component instanceof circuitsim.components.electrical.Source) {
+            circuitsim.components.electrical.Source source = (circuitsim.components.electrical.Source) component;
             closed = source.isActive();
         }
         String customId = null;
-        if (component instanceof circuitsim.components.CustomComponent) {
-            circuitsim.components.CustomComponent custom = (circuitsim.components.CustomComponent) component;
+        if (component instanceof circuitsim.components.ports.CustomComponent) {
+            circuitsim.components.ports.CustomComponent custom = (circuitsim.components.ports.CustomComponent) component;
             if (custom.getDefinition() != null) {
                 customId = custom.getDefinition().getId();
             }
@@ -2151,31 +2174,46 @@ public class CircuitPanel extends JPanel {
         CircuitComponent component;
         switch (state.getType()) {
             case "Battery":
-                component = new circuitsim.components.Battery(state.getX(), state.getY());
+                component = new circuitsim.components.electrical.Battery(state.getX(), state.getY());
                 break;
             case "Resistor":
-                component = new circuitsim.components.Resistor(state.getX(), state.getY());
+                component = new circuitsim.components.electrical.Resistor(state.getX(), state.getY());
                 break;
             case "Voltmeter":
-                component = new circuitsim.components.Voltmeter(state.getX(), state.getY());
+                component = new circuitsim.components.instruments.Voltmeter(state.getX(), state.getY());
                 break;
             case "Ammeter":
-                component = new circuitsim.components.Ammeter(state.getX(), state.getY());
+                component = new circuitsim.components.instruments.Ammeter(state.getX(), state.getY());
                 break;
             case "Switch":
-                component = new circuitsim.components.Switch(state.getX(), state.getY());
+                component = new circuitsim.components.electrical.Switch(state.getX(), state.getY());
                 break;
             case "Ground":
-                component = new circuitsim.components.Ground(state.getX(), state.getY());
+                component = new circuitsim.components.electrical.Ground(state.getX(), state.getY());
                 break;
             case "Source":
-                component = new circuitsim.components.Source(state.getX(), state.getY());
+                component = new circuitsim.components.electrical.Source(state.getX(), state.getY());
+                break;
+            case "NANDGate":
+                component = new circuitsim.components.logic.NANDGate(state.getX(), state.getY());
+                break;
+            case "ANDGate":
+                component = new circuitsim.components.logic.ANDGate(state.getX(), state.getY());
+                break;
+            case "ORGate":
+                component = new circuitsim.components.logic.ORGate(state.getX(), state.getY());
+                break;
+            case "XORGate":
+                component = new circuitsim.components.logic.XORGate(state.getX(), state.getY());
+                break;
+            case "NOTGate":
+                component = new circuitsim.components.logic.NOTGate(state.getX(), state.getY());
                 break;
             case "CustomInputPort":
-                component = new circuitsim.components.CustomInputPort(state.getX(), state.getY());
+                component = new circuitsim.components.ports.CustomInputPort(state.getX(), state.getY());
                 break;
             case "CustomOutputPort":
-                component = new circuitsim.components.CustomOutputPort(state.getX(), state.getY());
+                component = new circuitsim.components.ports.CustomOutputPort(state.getX(), state.getY());
                 break;
             case "Custom":
                 circuitsim.custom.CustomComponentDefinition definition =
@@ -2183,7 +2221,7 @@ public class CircuitPanel extends JPanel {
                 if (definition == null) {
                     return null;
                 }
-                component = new circuitsim.components.CustomComponent(state.getX(), state.getY(), definition);
+                component = new circuitsim.components.ports.CustomComponent(state.getX(), state.getY(), definition);
                 break;
             default:
                 return null;
@@ -2204,26 +2242,26 @@ public class CircuitPanel extends JPanel {
         component.setDisplayName(state.getDisplayName());
         component.setShowTitle(state.isShowTitle());
         component.setShowPropertyValues(state.isShowValues());
-        if (component instanceof circuitsim.components.Battery) {
-            circuitsim.components.Battery battery = (circuitsim.components.Battery) component;
+        if (component instanceof circuitsim.components.electrical.Battery) {
+            circuitsim.components.electrical.Battery battery = (circuitsim.components.electrical.Battery) component;
             if (state.getVoltage() != null) {
                 battery.setVoltage(state.getVoltage());
             }
             if (state.getInternalResistance() != null) {
                 battery.setInternalResistance(state.getInternalResistance());
             }
-        } else if (component instanceof circuitsim.components.Resistor) {
-            circuitsim.components.Resistor resistor = (circuitsim.components.Resistor) component;
+        } else if (component instanceof circuitsim.components.electrical.Resistor) {
+            circuitsim.components.electrical.Resistor resistor = (circuitsim.components.electrical.Resistor) component;
             if (state.getResistance() != null) {
                 resistor.setResistance(state.getResistance());
             }
-        } else if (component instanceof circuitsim.components.Switch) {
-            circuitsim.components.Switch toggle = (circuitsim.components.Switch) component;
+        } else if (component instanceof circuitsim.components.electrical.Switch) {
+            circuitsim.components.electrical.Switch toggle = (circuitsim.components.electrical.Switch) component;
             if (state.getClosed() != null) {
                 toggle.setClosed(state.getClosed());
             }
-        } else if (component instanceof circuitsim.components.Source) {
-            circuitsim.components.Source source = (circuitsim.components.Source) component;
+        } else if (component instanceof circuitsim.components.electrical.Source) {
+            circuitsim.components.electrical.Source source = (circuitsim.components.electrical.Source) component;
             if (state.getClosed() != null) {
                 source.setActive(state.getClosed());
             }
@@ -3168,9 +3206,31 @@ public class CircuitPanel extends JPanel {
             return false;
         }
         CircuitComponent owner = point.getOwner();
-        if (owner instanceof circuitsim.components.CustomComponent) {
-            circuitsim.components.CustomComponent custom = (circuitsim.components.CustomComponent) owner;
+        if (owner instanceof circuitsim.components.ports.CustomComponent) {
+            circuitsim.components.ports.CustomComponent custom = (circuitsim.components.ports.CustomComponent) owner;
             return custom.isInputPoint(point);
+        }
+        return false;
+    }
+
+    /**
+     * Checks if coordinates match any logic gate input connection point.
+     * This prevents multiple wires from connecting to logic gate inputs.
+     */
+    private boolean isLogicInputConnectionAt(int x, int y) {
+        for (circuitsim.components.core.CircuitComponent component : components) {
+            if (component.isLogicComponent()) {
+                List<circuitsim.components.core.ConnectionPoint> points = component.getConnectionPoints();
+                for (int i = 0; i < points.size(); i++) {
+                    if (component.isInputConnection(i)) {
+                        int pointX = component.getConnectionPointWorldX(points.get(i));
+                        int pointY = component.getConnectionPointWorldY(points.get(i));
+                        if (pointX == x && pointY == y) {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         return false;
     }

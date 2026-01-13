@@ -1,8 +1,8 @@
 package circuitsim.ui;
 
-import circuitsim.components.ComponentProperty;
-import circuitsim.components.ComponentPropertyType;
-import circuitsim.components.PropertyOwner;
+import circuitsim.components.properties.ComponentProperty;
+import circuitsim.components.properties.ComponentPropertyType;
+import circuitsim.components.core.PropertyOwner;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;

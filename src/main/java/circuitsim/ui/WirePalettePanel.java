@@ -1,6 +1,6 @@
 package circuitsim.ui;
 
-import circuitsim.components.WireColor;
+import circuitsim.components.wiring.WireColor;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;

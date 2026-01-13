@@ -65,7 +65,7 @@ public final class CustomComponentLibrary {
         }
         ensureDir(activeDir);
         Path file = activeDir.resolve(definition.getId() + ".json");
-        BoardState wrapper = new BoardState(BoardState.CURRENT_VERSION, circuitsim.components.WireColor.WHITE,
+        BoardState wrapper = new BoardState(BoardState.CURRENT_VERSION, circuitsim.components.wiring.WireColor.WHITE,
                 Collections.emptyList(), Collections.emptyList(),
                 Collections.singletonList(definition));
         Files.writeString(file, BoardStateIO.toJson(wrapper));
@@ -99,7 +99,7 @@ public final class CustomComponentLibrary {
             Path file = localDir.resolve(definition.getId() + ".json");
             if (!Files.exists(file)) {
                 BoardState wrapper = new BoardState(BoardState.CURRENT_VERSION,
-                        circuitsim.components.WireColor.WHITE, Collections.emptyList(),
+                        circuitsim.components.wiring.WireColor.WHITE, Collections.emptyList(),
                         Collections.emptyList(), Collections.singletonList(definition));
                 Files.writeString(file, BoardStateIO.toJson(wrapper));
             }
@@ -215,7 +215,7 @@ public final class CustomComponentLibrary {
     private void writeDefinitionFile(Path dir, CustomComponentDefinition definition) throws IOException {
         ensureDir(dir);
         Path file = dir.resolve(definition.getId() + ".json");
-        BoardState wrapper = new BoardState(BoardState.CURRENT_VERSION, circuitsim.components.WireColor.WHITE,
+        BoardState wrapper = new BoardState(BoardState.CURRENT_VERSION, circuitsim.components.wiring.WireColor.WHITE,
                 Collections.emptyList(), Collections.emptyList(), Collections.singletonList(definition));
         Files.writeString(file, BoardStateIO.toJson(wrapper));
     }
