@@ -55,6 +55,11 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * @param connectionAmount maximum number of connection points
      */
     protected CircuitComponent(int x, int y, int height, int width, int connectionAmount) {
+        this(x, y, height, width, connectionAmount, true);
+    }
+
+    protected CircuitComponent(int x, int y, int height, int width, int connectionAmount,
+                               boolean includeDefaultProperties) {
         this.id = ID_COUNTER.getAndIncrement();
         this.x = x;
         this.y = y;
@@ -65,18 +70,11 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
         this.aspectRatio = width / (float) height;
         this.connectionAmount = Math.max(0, connectionAmount);
         this.displayName = getClass().getSimpleName();
-        if (includeDefaultProperties()) {
+        if (includeDefaultProperties) {
             properties.add(new BooleanProperty("Show Values", this::isShowingPropertyValues,
                     this::setShowPropertyValues, false));
             properties.add(new BooleanProperty("Show Title", this::isShowTitle, this::setShowTitle, false));
         }
-    }
-
-    /**
-     * Determines whether default visibility properties are added.
-     */
-    protected boolean includeDefaultProperties() {
-        return true;
     }
 
     /**
@@ -163,6 +161,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
     /**
      * Gets the immutable list of connection points.
      */
+    @Override
     public List<ConnectionPoint> getConnectionPoints() {
         return Collections.unmodifiableList(connectionPoints);
     }
@@ -193,7 +192,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
     /**
      * Adds a property entry to display and edit in the UI.
      */
-    protected void addProperty(ComponentProperty property) {
+    protected final void addProperty(ComponentProperty property) {
         properties.add(property);
     }
 
@@ -232,14 +231,14 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
         }
         for (int i = 0; i < connectionPoints.size(); i++) {
             ConnectionPoint localPoint = connectionPoints.get(i);
-            if (!localPoint.isConnected()) {
-                // Check if this is a logic component input that should have single-wire restriction
-                if (isLogicComponent() && isInputConnection(i) && point.getConnectedPoints().size() > 0) {
-                    // Logic input already has a connection, don't allow another
-                    continue;
-                }
-                localPoint.connect(point);
-                return;
+                if (!localPoint.isConnected()) {
+                    // Check if this is a logic component input that should have single-wire restriction
+                    if (isLogicComponent() && isInputConnection(i) && !point.getConnectedPoints().isEmpty()) {
+                        // Logic input already has a connection, don't allow another
+                        continue;
+                    }
+                    localPoint.connect(point);
+                    return;
             }
         }
     }
@@ -382,6 +381,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * @return true if the component can rotate in 90-degree steps (0-3).
      * NOTE: Provides default implementation - override in components as needed.
      */
+    @Override
     public boolean allowFullRotation() {
         return false;
     }
@@ -414,6 +414,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
     /**
      * @return true if this is a logic component with single-wire input restriction
      */
+    @Override
     public boolean isLogicComponent() {
         return false;
     }
@@ -421,6 +422,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
     /**
      * @return true if the connection point at given index is an input that should have single-wire restriction
      */
+    @Override
     public boolean isInputConnection(int connectionIndex) {
         return false;
     }
@@ -429,6 +431,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * @return the number of input connections for this logic gate
      * Override in logic gates to return actual input count.
      */
+    @Override
     public int getInputCount() {
         // Default implementation - override in logic gates
         return 0;
@@ -438,6 +441,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * @return the number of output connections for this logic gate
      * Override in logic gates to return actual output count.
      */
+    @Override
     public int getOutputCount() {
         // Default implementation - override in logic gates
         return 0;
@@ -447,8 +451,8 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * @return true if this connection point should be treated as an input
      * Override in logic gates for custom input selection logic.
      */
+    @Override
     public boolean isInputPoint(ConnectionPoint point) {
-        List<ConnectionPoint> points = getConnectionPoints();
         int index = getConnectionPointIndex(point);
         return index < getInputCount();
     }
@@ -457,8 +461,8 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * @return true if this connection point should be treated as an output
      * Override in logic gates for custom output selection logic.
      */
+    @Override
     public boolean isOutputPoint(ConnectionPoint point) {
-        List<ConnectionPoint> points = getConnectionPoints();
         int index = getConnectionPointIndex(point);
         return index >= getInputCount() && index < (getInputCount() + getOutputCount());
     }
@@ -571,6 +575,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * Called before physics simulation starts.
      * EXTENSIBLE: Override in components that need pre-simulation setup.
      */
+    @Override
     public void beforeSimulation() {
         // Default implementation - override as needed
     }
@@ -579,6 +584,7 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * Called after physics simulation completes.
      * EXTENSIBLE: Override in components that need post-simulation cleanup.
      */
+    @Override
     public void afterSimulation() {
         // Default implementation - override as needed
     }

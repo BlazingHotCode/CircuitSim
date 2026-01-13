@@ -3,7 +3,6 @@ package circuitsim.components.ports;
 import circuitsim.components.core.*;
 import circuitsim.components.properties.*;
 import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.Color;
@@ -12,12 +11,13 @@ import java.awt.Graphics2D;
 /**
  * Input port component for custom component editors.
  */
+@BuiltinComponent(group = "IO", paletteName = "Input", groupOrder = 70, paletteOrder = 10)
 public class CustomInputPort extends SingleTerminalComponent implements SwitchLike {
     private static final int DEFAULT_SIZE = Grid.SIZE * 2;
     private boolean active;
 
     public CustomInputPort(int x, int y) {
-        super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 1f, 0.5f);
+        super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 1f, 0.5f, false);
         setDisplayName("Input");
         addProperty(new StringProperty("Port Name", this::getDisplayName, this::setDisplayName, false, true));
         addProperty(new BooleanProperty("Active", this::isActive, this::setActive, false));
@@ -51,11 +51,6 @@ public class CustomInputPort extends SingleTerminalComponent implements SwitchLi
     public void updateSimulation(java.util.List<Wire> wires) {
         // Custom input ports don't need special simulation updates
         // But the interface requires this method to be implemented
-    }
-
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
     }
 
     @Override

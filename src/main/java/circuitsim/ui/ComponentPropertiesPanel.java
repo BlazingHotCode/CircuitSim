@@ -1,8 +1,8 @@
 package circuitsim.ui;
 
+import circuitsim.components.core.PropertyOwner;
 import circuitsim.components.properties.ComponentProperty;
 import circuitsim.components.properties.ComponentPropertyType;
-import circuitsim.components.core.PropertyOwner;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -226,8 +226,8 @@ public class ComponentPropertiesPanel extends JPanel {
             Object value = property.getEditorValue();
             field.setText(value == null ? "" : value.toString());
             styleTextField(field);
-            if (field.getDocument() instanceof AbstractDocument) {
-                ((AbstractDocument) field.getDocument()).setDocumentFilter(new NumericDocumentFilter());
+            if (field.getDocument() instanceof AbstractDocument document) {
+                document.setDocumentFilter(new NumericDocumentFilter());
             }
             field.getDocument().addDocumentListener(new PropertyDocumentListener(() -> {
                 property.setValueFromEditor(field.getText());
@@ -281,9 +281,8 @@ public class ComponentPropertiesPanel extends JPanel {
             titleEditor.removeFocusListener(listener);
         }
         javax.swing.text.Document document = titleEditor.getDocument();
-        if (document instanceof javax.swing.text.AbstractDocument) {
-            DocumentListener[] listeners = ((javax.swing.text.AbstractDocument) document)
-                    .getDocumentListeners();
+        if (document instanceof javax.swing.text.AbstractDocument abstractDocument) {
+            DocumentListener[] listeners = abstractDocument.getDocumentListeners();
             for (DocumentListener listener : listeners) {
                 document.removeDocumentListener(listener);
             }
@@ -413,7 +412,8 @@ public class ComponentPropertiesPanel extends JPanel {
             }
             java.awt.Rectangle caretRect;
             try {
-                caretRect = component.modelToView(getDot());
+                java.awt.geom.Rectangle2D caretRect2D = component.modelToView2D(getDot());
+                caretRect = caretRect2D == null ? null : caretRect2D.getBounds();
             } catch (javax.swing.text.BadLocationException e) {
                 return;
             }

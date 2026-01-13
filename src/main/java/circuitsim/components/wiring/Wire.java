@@ -1,7 +1,5 @@
 package circuitsim.components.wiring;
 
-import circuitsim.components.core.*;
-
 import circuitsim.ui.Colors;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -33,8 +31,8 @@ public class Wire {
     /**
      * Creates a wire with the default color.
      */
-    public Wire(WireNode start, WireNode end) {
-        this(start, end, WireColor.WHITE);
+    public static Wire connect(WireNode start, WireNode end) {
+        return connect(start, end, WireColor.WHITE);
     }
 
     /**
@@ -42,12 +40,25 @@ public class Wire {
      * @param end end node
      * @param color wire color
      */
-    public Wire(WireNode start, WireNode end, WireColor color) {
+    public static Wire connect(WireNode start, WireNode end, WireColor color) {
+        Wire wire = new Wire(start, end, color);
+        wire.attachToNodes();
+        return wire;
+    }
+
+    private Wire(WireNode start, WireNode end, WireColor color) {
         this.start = start;
         this.end = end;
-        this.start.addWire(this);
-        this.end.addWire(this);
         this.color = color == null ? WireColor.WHITE : color;
+    }
+
+    private void attachToNodes() {
+        if (start != null) {
+            start.addWire(this);
+        }
+        if (end != null) {
+            end.addWire(this);
+        }
     }
 
     /**

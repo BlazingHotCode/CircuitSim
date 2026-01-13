@@ -1,8 +1,6 @@
 package circuitsim.components.logic;
 
 import circuitsim.components.core.*;
-import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
 
 import circuitsim.ui.Grid;
 import java.awt.Color;
@@ -32,7 +30,7 @@ public abstract class LogicGate extends CircuitComponent {
     private boolean outputPowered;
 
     protected LogicGate(int x, int y, int baseWidth, int baseHeight, int connectionCount) {
-        super(x, y, baseHeight, baseWidth, connectionCount);
+        super(x, y, baseHeight, baseWidth, connectionCount, false);
     }
 
     protected LogicGate(int x, int y, int connectionCount) {
@@ -58,11 +56,6 @@ public abstract class LogicGate extends CircuitComponent {
         addConnectionPoint(1f, 0.5f);   // Output
     }
 
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
-    }
-    
     /**
      * MODULAR: Template method for custom gate appearance.
      * Override to create specific gate visuals.
@@ -99,6 +92,7 @@ public abstract class LogicGate extends CircuitComponent {
      * MODULAR: Template method for adding connection points.
      * Override to create custom input/output layouts.
      */
+    @Override
     protected void addConnectionPoint(float relativeX, float relativeY) {
         // Default: Use standard connection point addition
         super.addConnectionPoint(relativeX, relativeY);

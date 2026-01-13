@@ -1,9 +1,6 @@
 package circuitsim.components.logic;
 
 import circuitsim.components.core.*;
-import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Grid;
 
 /**
@@ -29,34 +26,18 @@ public final class LogicGateFactory {
         if (gateType == null || gateType.trim().isEmpty()) {
             return null;
         }
-        
-        switch (gateType.toUpperCase()) {
-            case "NAND":
-                return new NANDGate(x, y);
-            case "AND":
-                return new ANDGate(x, y);
-            case "OR":
-                return new ORGate(x, y);
-            case "XOR":
-                return new XORGate(x, y);
-            case "NOT":
-                return new NOTGate(x, y);
+
+        return switch (gateType.toUpperCase()) {
+            case "NAND" -> new NANDGate(x, y);
+            case "AND" -> new ANDGate(x, y);
+            case "OR" -> new ORGate(x, y);
+            case "XOR" -> new XORGate(x, y);
+            case "NOT" -> new NOTGate(x, y);
             // Add new logic gate types here:
-            // case "AND":
-            //     return new ANDGate(x, y);
-            // case "OR":
-            //     return new ORGate(x, y);
-            // case "NOT":
-            //     return new NOTGate(x, y);
-            // case "XOR":
-            //     return new XORGate(x, y);
-            // case "NOR":
-            //     return new NORGate(x, y);
-            // case "XNOR":
-            //     return new XNORGate(x, y);
-            default:
-                return null;
-        }
+            // case "NOR" -> new NORGate(x, y);
+            // case "XNOR" -> new XNORGate(x, y);
+            default -> null;
+        };
     }
     
     /**
@@ -100,29 +81,13 @@ public final class LogicGateFactory {
         if (gateType == null) {
             return false;
         }
-        
-        switch (gateType.toUpperCase()) {
-            case "NAND":
-                return true;
-            case "AND":
-            case "OR":
-            case "XOR":
-            case "NOT":
-                return true;
+
+        return switch (gateType.toUpperCase()) {
+            case "NAND", "AND", "OR", "XOR", "NOT" -> true;
             // Add new logic gate types here:
-            // case "AND":
-            //     return true;
-            // case "OR":
-            //     return true;
-            // case "NOT":
-            //     return true;
-            // case "XOR":
-            //     return true;
-            // case "NOR":
-            //     return true;
-            default:
-                return false;
-        }
+            // case "NOR" -> true;
+            default -> false;
+        };
     }
     
     /**

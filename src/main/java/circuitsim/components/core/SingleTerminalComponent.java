@@ -5,7 +5,12 @@ package circuitsim.components.core;
  */
 public abstract class SingleTerminalComponent extends CircuitComponent {
     protected SingleTerminalComponent(int x, int y, int height, int width, float relativeX, float relativeY) {
-        super(x, y, height, width, 1);
+        this(x, y, height, width, relativeX, relativeY, true);
+    }
+
+    protected SingleTerminalComponent(int x, int y, int height, int width, float relativeX, float relativeY,
+                                      boolean includeDefaultProperties) {
+        super(x, y, height, width, 1, includeDefaultProperties);
         addConnectionPoint(relativeX, relativeY);
     }
 

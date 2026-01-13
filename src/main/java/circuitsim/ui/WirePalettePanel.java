@@ -132,8 +132,8 @@ public class WirePalettePanel extends JPanel {
             }
             JToggleButton button = (JToggleButton) component;
             Object value = button.getClientProperty(WIRE_COLOR_KEY);
-            if (value instanceof WireColor) {
-                button.setBackground(((WireColor) value).getColor());
+            if (value instanceof WireColor wireColor) {
+                button.setBackground(wireColor.getColor());
             }
             if (button.isSelected()) {
                 button.setBorder(BorderFactory.createLineBorder(Colors.WIRE_PALETTE_SELECTED, 2));

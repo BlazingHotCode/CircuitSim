@@ -1,17 +1,17 @@
 package circuitsim.physics;
 
-import circuitsim.components.instruments.Ammeter;
-import circuitsim.components.electrical.Battery;
 import circuitsim.components.core.CircuitComponent;
 import circuitsim.components.core.ConnectionPoint;
-import circuitsim.components.logic.LogicGate;
-import circuitsim.components.ports.CustomInputPort;
-import circuitsim.components.ports.CustomOutputPort;
+import circuitsim.components.core.SwitchLike;
+import circuitsim.components.electrical.Battery;
 import circuitsim.components.electrical.Ground;
 import circuitsim.components.electrical.Resistor;
 import circuitsim.components.electrical.Source;
-import circuitsim.components.core.SwitchLike;
+import circuitsim.components.instruments.Ammeter;
 import circuitsim.components.instruments.Voltmeter;
+import circuitsim.components.logic.LogicGate;
+import circuitsim.components.ports.CustomInputPort;
+import circuitsim.components.ports.CustomOutputPort;
 import circuitsim.components.wiring.Wire;
 import circuitsim.components.wiring.WireNode;
 import circuitsim.ui.Grid;
@@ -97,70 +97,68 @@ public final class CircuitPhysics {
         List<Source> sources = new ArrayList<>();
         List<LogicGate> logicGates = new ArrayList<>();
         for (CircuitComponent component : components) {
-            if (component instanceof Resistor) {
-                Resistor resistor = (Resistor) component;
-                List<ConnectionPoint> points = resistor.getConnectionPoints();
-                if (points.size() < 2) {
-                    continue;
+            switch (component) {
+                case Resistor resistor -> {
+                    List<ConnectionPoint> points = resistor.getConnectionPoints();
+                    if (points.size() < 2) {
+                        break;
+                    }
+                    int aIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(0)),
+                            component.getConnectionPointWorldY(points.get(0)));
+                    int bIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(1)),
+                            component.getConnectionPointWorldY(points.get(1)));
+                    edges.add(new Edge(aIndex, bIndex,
+                            Math.max(MIN_RESISTANCE, resistor.getResistance()), resistor));
                 }
-                int aIndex = getNodeIndex(nodeIndex,
-                        component.getConnectionPointWorldX(points.get(0)),
-                        component.getConnectionPointWorldY(points.get(0)));
-                int bIndex = getNodeIndex(nodeIndex,
-                        component.getConnectionPointWorldX(points.get(1)),
-                        component.getConnectionPointWorldY(points.get(1)));
-                edges.add(new Edge(aIndex, bIndex,
-                        Math.max(MIN_RESISTANCE, resistor.getResistance()), resistor));
-            } else if (component instanceof Battery) {
-                Battery battery = (Battery) component;
-                batteries.add(battery);
-            } else if (component instanceof Ammeter) {
-                Ammeter ammeter = (Ammeter) component;
-                List<ConnectionPoint> points = ammeter.getConnectionPoints();
-                if (points.size() < 2) {
-                    continue;
+                case Battery battery -> batteries.add(battery);
+                case Ammeter ammeter -> {
+                    List<ConnectionPoint> points = ammeter.getConnectionPoints();
+                    if (points.size() < 2) {
+                        break;
+                    }
+                    int aIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(0)),
+                            component.getConnectionPointWorldY(points.get(0)));
+                    int bIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(1)),
+                            component.getConnectionPointWorldY(points.get(1)));
+                    edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, ammeter));
                 }
-                int aIndex = getNodeIndex(nodeIndex,
-                        component.getConnectionPointWorldX(points.get(0)),
-                        component.getConnectionPointWorldY(points.get(0)));
-                int bIndex = getNodeIndex(nodeIndex,
-                        component.getConnectionPointWorldX(points.get(1)),
-                        component.getConnectionPointWorldY(points.get(1)));
-                edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, ammeter));
-            } else if (component instanceof Voltmeter) {
-                voltmeters.add((Voltmeter) component);
-            } else if (component instanceof CustomInputPort) {
-                inputPorts.add((CustomInputPort) component);
-            } else if (component instanceof Source) {
-                sources.add((Source) component);
-            } else if (component instanceof LogicGate) {
-                logicGates.add((LogicGate) component);
-            } else if (component instanceof SwitchLike) {
-                SwitchLike circuitSwitch = (SwitchLike) component;
-                switches.add(circuitSwitch);
-                if (!circuitSwitch.isClosed()) {
-                    continue;
+                case Voltmeter voltmeter -> voltmeters.add(voltmeter);
+                case CustomInputPort inputPort -> inputPorts.add(inputPort);
+                case Source source -> sources.add(source);
+                case LogicGate logicGate -> logicGates.add(logicGate);
+                case SwitchLike circuitSwitch -> {
+                    switches.add(circuitSwitch);
+                    if (!circuitSwitch.isClosed()) {
+                        break;
+                    }
+                    List<ConnectionPoint> points = component.getConnectionPoints();
+                    if (points.size() < 2) {
+                        break;
+                    }
+                    int aIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(0)),
+                            component.getConnectionPointWorldY(points.get(0)));
+                    int bIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(1)),
+                            component.getConnectionPointWorldY(points.get(1)));
+                    edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, circuitSwitch));
                 }
-                List<ConnectionPoint> points = component.getConnectionPoints();
-                if (points.size() < 2) {
-                    continue;
+                case CustomOutputPort outputPort -> {
+                    outputPorts.add(outputPort);
+                    if (treatCustomOutputsAsGround) {
+                        grounds.add(new GroundAdapter(outputPort));
+                    }
                 }
-                int aIndex = getNodeIndex(nodeIndex,
-                        component.getConnectionPointWorldX(points.get(0)),
-                        component.getConnectionPointWorldY(points.get(0)));
-                int bIndex = getNodeIndex(nodeIndex,
-                        component.getConnectionPointWorldX(points.get(1)),
-                        component.getConnectionPointWorldY(points.get(1)));
-                edges.add(new Edge(aIndex, bIndex, WIRE_RESISTANCE, circuitSwitch));
-            } else if (component instanceof CustomOutputPort) {
-                outputPorts.add((CustomOutputPort) component);
-            }
-            if (component instanceof Ground) {
-                Ground ground = (Ground) component;
-                grounds.add(ground);
-                groundComponents.add(ground);
-            } else if (component instanceof CustomOutputPort && treatCustomOutputsAsGround) {
-                grounds.add(new GroundAdapter((CustomOutputPort) component));
+                case Ground ground -> {
+                    grounds.add(ground);
+                    groundComponents.add(ground);
+                }
+                default -> {
+                }
             }
         }
         for (Wire wire : wires) {
@@ -175,7 +173,7 @@ public final class CircuitPhysics {
                     WIRE_RESISTANCE, wire));
         }
         int nodeCount = nodeIndex.size();
-        java.awt.Point groundPoint = resolveGroundPoint(nodeIndex, grounds,
+        java.awt.Point groundPoint = resolveGroundPoint(grounds,
                 batteries.isEmpty() ? null : batteries.get(0), wires);
         if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
             groundPoint = getOutputPortPoint(outputPorts.get(0));
@@ -226,14 +224,13 @@ public final class CircuitPhysics {
             resetGroundIndicators(groundComponents);
             return false;
         }
-        groundPoint = resolveGroundPoint(nodeIndex, grounds, primaryBattery, wires);
+        groundPoint = resolveGroundPoint(grounds, primaryBattery, wires);
         if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
             groundPoint = getOutputPortPoint(outputPorts.get(0));
         }
         Integer groundIndex = groundPoint == null ? null : nodeIndex.get(groundPoint);
-        if ((groundIndex == null || groundIndex < 0) && primaryBattery != null) {
+        if (groundIndex == null || groundIndex < 0) {
             java.awt.Point fallbackGround = getBatteryNegativePoint(primaryBattery);
-            groundPoint = fallbackGround;
             groundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
         }
         if (groundIndex == null || groundIndex < 0) {
@@ -248,10 +245,12 @@ public final class CircuitPhysics {
                 primaryBattery.getConnectionPointWorldX(positive),
                 primaryBattery.getConnectionPointWorldY(positive));
         GraphView pruned = pruneToConnected(nodeCount, edges, batteries, groundIndex, positiveIndex);
-        if (pruned.edges.isEmpty() && primaryBattery != null && grounds != null && !grounds.isEmpty()) {
+        if (pruned.edges.isEmpty() && !grounds.isEmpty()) {
             java.awt.Point fallbackGround = getBatteryNegativePoint(primaryBattery);
             Integer fallbackGroundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
-            if (fallbackGroundIndex != null && fallbackGroundIndex >= 0 && fallbackGroundIndex != groundIndex) {
+            if (fallbackGroundIndex != null
+                    && fallbackGroundIndex >= 0
+                    && fallbackGroundIndex.intValue() != groundIndex.intValue()) {
                 pruned = pruneToConnected(nodeCount, edges, batteries, fallbackGroundIndex, positiveIndex);
             }
         }
@@ -265,9 +264,8 @@ public final class CircuitPhysics {
         }
 
         boolean allowShortCircuit = areAllInputBatteries(batteries);
-        boolean shortCircuit = detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
-                pruned.edges);
-        if (shortCircuit && !allowShortCircuit) {
+        if (!allowShortCircuit && detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
+                pruned.edges)) {
             resetComputedValues(pruned.edges);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
@@ -275,9 +273,6 @@ public final class CircuitPhysics {
             resetOutputIndicators(outputPorts);
             resetGroundIndicators(groundComponents);
             return true;
-        }
-        if (allowShortCircuit) {
-            shortCircuit = false;
         }
 
         double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
@@ -542,8 +537,8 @@ public final class CircuitPhysics {
     /**
      * Resolves the ground node index, falling back to the battery negative terminal.
      */
-    private static java.awt.Point resolveGroundPoint(Map<Point, Integer> nodeIndex, List<Ground> grounds,
-            Battery primaryBattery, Collection<Wire> wires) {
+    private static java.awt.Point resolveGroundPoint(List<Ground> grounds, Battery primaryBattery,
+                                                     Collection<Wire> wires) {
         if (grounds != null && !grounds.isEmpty()) {
             for (Ground ground : grounds) {
                 List<ConnectionPoint> points = ground.getConnectionPoints();

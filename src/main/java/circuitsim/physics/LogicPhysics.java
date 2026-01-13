@@ -54,16 +54,14 @@ public final class LogicPhysics {
         // (including custom-component expansion wires) before evaluating gates.
         propagateLogicPower(wires);
         for (CircuitComponent component : components) {
-            if (component instanceof NANDGate) {
-                updateNANDGate((NANDGate) component, wires);
-            } else if (component instanceof ANDGate) {
-                updateANDGate((ANDGate) component, wires);
-            } else if (component instanceof ORGate) {
-                updateORGate((ORGate) component, wires);
-            } else if (component instanceof XORGate) {
-                updateXORGate((XORGate) component, wires);
-            } else if (component instanceof NOTGate) {
-                updateNOTGate((NOTGate) component, wires);
+            switch (component) {
+                case NANDGate nandGate -> updateNANDGate(nandGate, wires);
+                case ANDGate andGate -> updateANDGate(andGate, wires);
+                case ORGate orGate -> updateORGate(orGate, wires);
+                case XORGate xorGate -> updateXORGate(xorGate, wires);
+                case NOTGate notGate -> updateNOTGate(notGate, wires);
+                default -> {
+                }
             }
         }
         // Spread any newly-driven outputs through connected networks.
@@ -227,15 +225,18 @@ public final class LogicPhysics {
 
     private static void seedLogicInputs(Collection<CircuitComponent> components, Collection<Wire> wires) {
         for (CircuitComponent component : components) {
-            if (component instanceof CustomInputPort) {
-                CustomInputPort input = (CustomInputPort) component;
-                if (input.isActive()) {
-                    markWiresPowered(input.getConnectionPoints(), input, wires);
+            switch (component) {
+                case CustomInputPort input -> {
+                    if (input.isActive()) {
+                        markWiresPowered(input.getConnectionPoints(), input, wires);
+                    }
                 }
-            } else if (component instanceof Source) {
-                Source source = (Source) component;
-                if (source.isActive()) {
-                    markWiresPowered(source.getConnectionPoints(), source, wires);
+                case Source source -> {
+                    if (source.isActive()) {
+                        markWiresPowered(source.getConnectionPoints(), source, wires);
+                    }
+                }
+                default -> {
                 }
             }
         }
@@ -266,10 +267,9 @@ public final class LogicPhysics {
 
     private static void updateCustomOutputPorts(Collection<CircuitComponent> components, Collection<Wire> wires) {
         for (CircuitComponent component : components) {
-            if (!(component instanceof CustomOutputPort)) {
+            if (!(component instanceof CustomOutputPort outputPort)) {
                 continue;
             }
-            CustomOutputPort outputPort = (CustomOutputPort) component;
             List<ConnectionPoint> points = outputPort.getConnectionPoints();
             if (points.isEmpty()) {
                 outputPort.setActiveIndicator(false);

@@ -1,14 +1,14 @@
 package circuitsim.ui;
 
-import circuitsim.components.instruments.Ammeter;
 import circuitsim.components.core.CircuitComponent;
 import circuitsim.components.core.ComponentRegistry;
 import circuitsim.components.core.ConnectionPoint;
+import circuitsim.components.electrical.Switch;
+import circuitsim.components.instruments.Ammeter;
+import circuitsim.components.instruments.Voltmeter;
 import circuitsim.components.ports.CustomComponent;
 import circuitsim.components.ports.CustomInputPort;
 import circuitsim.components.ports.CustomOutputPort;
-import circuitsim.components.electrical.Switch;
-import circuitsim.components.instruments.Voltmeter;
 import circuitsim.components.wiring.Wire;
 import circuitsim.components.wiring.WireColor;
 import circuitsim.components.wiring.WireNode;
@@ -22,29 +22,29 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.KeyEvent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
+import javax.swing.JFileChooser;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
-import javax.swing.JFileChooser;
-import javax.swing.JOptionPane;
 
 /**
  * Main canvas for circuit editing, rendering, and interaction.
@@ -102,8 +102,9 @@ public class CircuitPanel extends JPanel {
     private int panOriginOffsetX;
     private int panOriginOffsetY;
     private boolean panMoved;
-    private Integer lastMouseWorldX;
-    private Integer lastMouseWorldY;
+    private int lastMouseWorldX;
+    private int lastMouseWorldY;
+    private boolean hasLastMouseWorld;
     private JPopupMenu clearPopup;
     private double zoomFactor = 1.0;
     private static final double MIN_ZOOM = 0.5;
@@ -318,20 +319,18 @@ public class CircuitPanel extends JPanel {
                         return;
                     }
                     CircuitComponent component = findComponentAtPoint(worldX, worldY);
-                    if (component instanceof Switch) {
-                        ((Switch) component).toggle();
+                    if (component instanceof Switch toggle) {
+                        toggle.toggle();
                         recordHistoryState();
                         repaint();
-                    } else if (component instanceof CustomInputPort
+                    } else if (component instanceof CustomInputPort inputPort
                             && findConnectionPointAt(worldX, worldY) == null) {
-                        CustomInputPort inputPort = (CustomInputPort) component;
                         inputPort.setActive(!inputPort.isActive());
                         selectComponent(inputPort);
                         recordHistoryState();
                         repaint();
-                    } else if (component instanceof circuitsim.components.electrical.Source
+                    } else if (component instanceof circuitsim.components.electrical.Source source
                             && findConnectionPointAt(worldX, worldY) == null) {
-                        circuitsim.components.electrical.Source source = (circuitsim.components.electrical.Source) component;
                         source.setActive(!source.isActive());
                         selectComponent(source);
                         recordHistoryState();
@@ -448,7 +447,6 @@ public class CircuitPanel extends JPanel {
                 }
                 if (draggingSelection) {
                     draggingSelection = false;
-                    didChange = true;
                     repaint();
                     return;
                 }
@@ -460,13 +458,11 @@ public class CircuitPanel extends JPanel {
                     creatingWire = false;
                     newWireStartNode = null;
                     pendingWireStartAnchor = null;
-                    didChange = true;
                     repaint();
                     return;
                 }
                 if (draggingWire != null) {
                     draggingWire = null;
-                    didChange = true;
                     repaint();
                     return;
                 }
@@ -650,8 +646,7 @@ public class CircuitPanel extends JPanel {
         List<CircuitComponent> simulationComponents = new ArrayList<>();
         List<Wire> simulationWires = new ArrayList<>(wires);
         for (CircuitComponent component : components) {
-            if (component instanceof CustomComponent) {
-                CustomComponent custom = (CustomComponent) component;
+            if (component instanceof CustomComponent custom) {
                 CustomComponentDefinition definition = custom.getDefinition();
                 if (definition == null) {
                     continue;
@@ -718,7 +713,7 @@ public class CircuitPanel extends JPanel {
         for (BoardState.WireState wireState : state.getWires()) {
             WireNode start = new WireNode(wireState.getStartX() + offset.x, wireState.getStartY() + offset.y);
             WireNode end = new WireNode(wireState.getEndX() + offset.x, wireState.getEndY() + offset.y);
-            Wire wire = new Wire(start, end, wireState.getColor());
+            Wire wire = Wire.connect(start, end, wireState.getColor());
             wire.setShowData(wireState.isShowData());
             result.wires.add(wire);
         }
@@ -738,7 +733,7 @@ public class CircuitPanel extends JPanel {
             java.awt.Point internal = internalPoints.get(i);
             WireNode start = new WireNode(external.x, external.y);
             WireNode end = new WireNode(internal.x, internal.y);
-            simWires.add(new Wire(start, end, WireColor.WHITE));
+            simWires.add(Wire.connect(start, end, WireColor.WHITE));
         }
     }
 
@@ -778,38 +773,8 @@ public class CircuitPanel extends JPanel {
         if (state == null || state.getType() == null) {
             return null;
         }
-        switch (state.getType()) {
-            case "Battery":
-                return new circuitsim.components.electrical.Battery(state.getX(), state.getY());
-            case "Resistor":
-                return new circuitsim.components.electrical.Resistor(state.getX(), state.getY());
-            case "Voltmeter":
-                return new circuitsim.components.instruments.Voltmeter(state.getX(), state.getY());
-            case "Ammeter":
-                return new circuitsim.components.instruments.Ammeter(state.getX(), state.getY());
-            case "Switch":
-                return new circuitsim.components.electrical.Switch(state.getX(), state.getY());
-            case "Ground":
-                return new circuitsim.components.electrical.Ground(state.getX(), state.getY());
-            case "CustomInputPort":
-                return new CustomInputPort(state.getX(), state.getY());
-            case "CustomOutputPort":
-                return new CustomOutputPort(state.getX(), state.getY());
-            case "Source":
-                return new circuitsim.components.electrical.Source(state.getX(), state.getY());
-            case "NANDGate":
-                return new circuitsim.components.logic.NANDGate(state.getX(), state.getY());
-            case "ANDGate":
-                return new circuitsim.components.logic.ANDGate(state.getX(), state.getY());
-            case "ORGate":
-                return new circuitsim.components.logic.ORGate(state.getX(), state.getY());
-            case "XORGate":
-                return new circuitsim.components.logic.XORGate(state.getX(), state.getY());
-            case "NOTGate":
-                return new circuitsim.components.logic.NOTGate(state.getX(), state.getY());
-            default:
-                return null;
-        }
+        return circuitsim.components.core.ComponentRegistry.createBuiltinFromType(state.getType(),
+                state.getX(), state.getY());
     }
 
     private static final class SimulationView {
@@ -1019,8 +984,8 @@ public class CircuitPanel extends JPanel {
         }
         placementEntry = entry;
         placementPreview = entry.create(0, 0);
-        int startX = lastMouseWorldX != null ? lastMouseWorldX : toWorldX(getWidth() / 2);
-        int startY = lastMouseWorldY != null ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        int startX = hasLastMouseWorld ? lastMouseWorldX : toWorldX(getWidth() / 2);
+        int startY = hasLastMouseWorld ? lastMouseWorldY : toWorldY(getHeight() / 2);
         placementX = Grid.snap(startX);
         placementY = Grid.snap(startY);
         repaint();
@@ -1068,8 +1033,8 @@ public class CircuitPanel extends JPanel {
         if (entry == null) {
             return;
         }
-        int targetX = lastMouseWorldX != null ? lastMouseWorldX : toWorldX(getWidth() / 2);
-        int targetY = lastMouseWorldY != null ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        int targetX = hasLastMouseWorld ? lastMouseWorldX : toWorldX(getWidth() / 2);
+        int targetY = hasLastMouseWorld ? lastMouseWorldY : toWorldY(getHeight() / 2);
         addComponentAtWorld(entry, targetX, targetY);
     }
 
@@ -1079,6 +1044,7 @@ public class CircuitPanel extends JPanel {
     private void updateLastMouseWorld(int screenX, int screenY) {
         lastMouseWorldX = toWorldX(screenX);
         lastMouseWorldY = toWorldY(screenY);
+        hasLastMouseWorld = true;
     }
 
     private void updatePlacementAtScreen(int screenX, int screenY) {
@@ -1951,7 +1917,7 @@ public class CircuitPanel extends JPanel {
         if (newWireStartNode != null && endNode != null
                 && (newWireStartNode.getX() != endNode.getX()
                 || newWireStartNode.getY() != endNode.getY())) {
-            Wire wire = new Wire(newWireStartNode, endNode, activeWireColor);
+            Wire wire = Wire.connect(newWireStartNode, endNode, activeWireColor);
             if (pendingWireStartAnchor != null) {
                 wire.setStartAnchorWire(pendingWireStartAnchor);
             }
@@ -2145,23 +2111,19 @@ public class CircuitPanel extends JPanel {
         Float internalResistance = null;
         Float resistance = null;
         Boolean closed = null;
-        if (component instanceof circuitsim.components.electrical.Battery) {
-            circuitsim.components.electrical.Battery battery = (circuitsim.components.electrical.Battery) component;
-            voltage = battery.getVoltage();
-            internalResistance = battery.getInternalResistance();
-        } else if (component instanceof circuitsim.components.electrical.Resistor) {
-            circuitsim.components.electrical.Resistor resistor = (circuitsim.components.electrical.Resistor) component;
-            resistance = resistor.getResistance();
-        } else if (component instanceof circuitsim.components.electrical.Switch) {
-            circuitsim.components.electrical.Switch toggle = (circuitsim.components.electrical.Switch) component;
-            closed = toggle.isClosed();
-        } else if (component instanceof circuitsim.components.electrical.Source) {
-            circuitsim.components.electrical.Source source = (circuitsim.components.electrical.Source) component;
-            closed = source.isActive();
+        switch (component) {
+            case circuitsim.components.electrical.Battery battery -> {
+                voltage = battery.getVoltage();
+                internalResistance = battery.getInternalResistance();
+            }
+            case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
+            case circuitsim.components.electrical.Switch toggle -> closed = toggle.isClosed();
+            case circuitsim.components.electrical.Source source -> closed = source.isActive();
+            default -> {
+            }
         }
         String customId = null;
-        if (component instanceof circuitsim.components.ports.CustomComponent) {
-            circuitsim.components.ports.CustomComponent custom = (circuitsim.components.ports.CustomComponent) component;
+        if (component instanceof circuitsim.components.ports.CustomComponent custom) {
             if (custom.getDefinition() != null) {
                 customId = custom.getDefinition().getId();
             }
@@ -2201,7 +2163,7 @@ public class CircuitPanel extends JPanel {
         for (BoardState.WireState wireState : state.getWires()) {
             WireNode start = getOrCreateWireNode(nodeCache, wireState.getStartX(), wireState.getStartY());
             WireNode end = getOrCreateWireNode(nodeCache, wireState.getEndX(), wireState.getEndY());
-            Wire wire = new Wire(start, end, wireState.getColor());
+            Wire wire = Wire.connect(start, end, wireState.getColor());
             wire.setShowData(wireState.isShowData());
             wires.add(wire);
         }
@@ -2218,62 +2180,22 @@ public class CircuitPanel extends JPanel {
             return null;
         }
         CircuitComponent component;
-        switch (state.getType()) {
-            case "Battery":
-                component = new circuitsim.components.electrical.Battery(state.getX(), state.getY());
-                break;
-            case "Resistor":
-                component = new circuitsim.components.electrical.Resistor(state.getX(), state.getY());
-                break;
-            case "Voltmeter":
-                component = new circuitsim.components.instruments.Voltmeter(state.getX(), state.getY());
-                break;
-            case "Ammeter":
-                component = new circuitsim.components.instruments.Ammeter(state.getX(), state.getY());
-                break;
-            case "Switch":
-                component = new circuitsim.components.electrical.Switch(state.getX(), state.getY());
-                break;
-            case "Ground":
-                component = new circuitsim.components.electrical.Ground(state.getX(), state.getY());
-                break;
-            case "Source":
-                component = new circuitsim.components.electrical.Source(state.getX(), state.getY());
-                break;
-            case "NANDGate":
-                component = new circuitsim.components.logic.NANDGate(state.getX(), state.getY());
-                break;
-            case "ANDGate":
-                component = new circuitsim.components.logic.ANDGate(state.getX(), state.getY());
-                break;
-            case "ORGate":
-                component = new circuitsim.components.logic.ORGate(state.getX(), state.getY());
-                break;
-            case "XORGate":
-                component = new circuitsim.components.logic.XORGate(state.getX(), state.getY());
-                break;
-            case "NOTGate":
-                component = new circuitsim.components.logic.NOTGate(state.getX(), state.getY());
-                break;
-            case "CustomInputPort":
-                component = new circuitsim.components.ports.CustomInputPort(state.getX(), state.getY());
-                break;
-            case "CustomOutputPort":
-                component = new circuitsim.components.ports.CustomOutputPort(state.getX(), state.getY());
-                break;
-            case "Custom":
-                circuitsim.custom.CustomComponentDefinition definition =
-                        customDefinitionResolver.apply(state.getCustomId());
-                if (definition == null) {
-                    definition = embeddedCustomDefinitions.get(state.getCustomId());
-                }
-                if (definition == null) {
-                    return null;
-                }
-                component = new circuitsim.components.ports.CustomComponent(state.getX(), state.getY(), definition);
-                break;
-            default:
+        if ("Custom".equals(state.getType())) {
+            circuitsim.custom.CustomComponentDefinition definition =
+                    customDefinitionResolver.apply(state.getCustomId());
+            if (definition == null) {
+                definition = embeddedCustomDefinitions.get(state.getCustomId());
+            }
+            if (definition == null) {
                 return null;
+            }
+            component = new circuitsim.components.ports.CustomComponent(state.getX(), state.getY(), definition);
+        } else {
+            component = circuitsim.components.core.ComponentRegistry.createBuiltinFromType(state.getType(),
+                    state.getX(), state.getY());
+            if (component == null) {
+                return null;
+            }
         }
         applyComponentState(component, state);
         return component;
@@ -2291,28 +2213,31 @@ public class CircuitPanel extends JPanel {
         component.setDisplayName(state.getDisplayName());
         component.setShowTitle(state.isShowTitle());
         component.setShowPropertyValues(state.isShowValues());
-        if (component instanceof circuitsim.components.electrical.Battery) {
-            circuitsim.components.electrical.Battery battery = (circuitsim.components.electrical.Battery) component;
-            if (state.getVoltage() != null) {
-                battery.setVoltage(state.getVoltage());
+        switch (component) {
+            case circuitsim.components.electrical.Battery battery -> {
+                if (state.getVoltage() != null) {
+                    battery.setVoltage(state.getVoltage());
+                }
+                if (state.getInternalResistance() != null) {
+                    battery.setInternalResistance(state.getInternalResistance());
+                }
             }
-            if (state.getInternalResistance() != null) {
-                battery.setInternalResistance(state.getInternalResistance());
+            case circuitsim.components.electrical.Resistor resistor -> {
+                if (state.getResistance() != null) {
+                    resistor.setResistance(state.getResistance());
+                }
             }
-        } else if (component instanceof circuitsim.components.electrical.Resistor) {
-            circuitsim.components.electrical.Resistor resistor = (circuitsim.components.electrical.Resistor) component;
-            if (state.getResistance() != null) {
-                resistor.setResistance(state.getResistance());
+            case circuitsim.components.electrical.Switch toggle -> {
+                if (state.getClosed() != null) {
+                    toggle.setClosed(state.getClosed());
+                }
             }
-        } else if (component instanceof circuitsim.components.electrical.Switch) {
-            circuitsim.components.electrical.Switch toggle = (circuitsim.components.electrical.Switch) component;
-            if (state.getClosed() != null) {
-                toggle.setClosed(state.getClosed());
+            case circuitsim.components.electrical.Source source -> {
+                if (state.getClosed() != null) {
+                    source.setActive(state.getClosed());
+                }
             }
-        } else if (component instanceof circuitsim.components.electrical.Source) {
-            circuitsim.components.electrical.Source source = (circuitsim.components.electrical.Source) component;
-            if (state.getClosed() != null) {
-                source.setActive(state.getClosed());
+            default -> {
             }
         }
     }
@@ -2628,8 +2553,8 @@ public class CircuitPanel extends JPanel {
         boolean showData = target.isShowData();
         target.detach();
         wires.remove(target);
-        Wire first = new Wire(start, splitNode, color);
-        Wire second = new Wire(splitNode, end, color);
+        Wire first = Wire.connect(start, splitNode, color);
+        Wire second = Wire.connect(splitNode, end, color);
         first.setShowData(showData);
         second.setShowData(showData);
         wires.add(first);
@@ -3255,8 +3180,7 @@ public class CircuitPanel extends JPanel {
             return false;
         }
         CircuitComponent owner = point.getOwner();
-        if (owner instanceof circuitsim.components.ports.CustomComponent) {
-            circuitsim.components.ports.CustomComponent custom = (circuitsim.components.ports.CustomComponent) owner;
+        if (owner instanceof circuitsim.components.ports.CustomComponent custom) {
             return custom.isInputPoint(point);
         }
         return false;

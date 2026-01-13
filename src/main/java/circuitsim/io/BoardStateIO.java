@@ -363,30 +363,14 @@ public final class BoardStateIO {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             switch (c) {
-                case '"':
-                    out.append("\\\"");
-                    break;
-                case '\\':
-                    out.append("\\\\");
-                    break;
-                case '\b':
-                    out.append("\\b");
-                    break;
-                case '\f':
-                    out.append("\\f");
-                    break;
-                case '\n':
-                    out.append("\\n");
-                    break;
-                case '\r':
-                    out.append("\\r");
-                    break;
-                case '\t':
-                    out.append("\\t");
-                    break;
-                default:
-                    out.append(c);
-                    break;
+                case '"' -> out.append("\\\"");
+                case '\\' -> out.append("\\\\");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> out.append(c);
             }
         }
         out.append('"');
@@ -406,7 +390,7 @@ public final class BoardStateIO {
      */
     private static String getString(Map<String, Object> map, String key, String fallback) {
         Object value = map.get(key);
-        return value instanceof String ? (String) value : fallback;
+        return value instanceof String string ? string : fallback;
     }
 
     /**
@@ -414,8 +398,8 @@ public final class BoardStateIO {
      */
     private static int getInt(Map<String, Object> map, String key, int fallback) {
         Object value = map.get(key);
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
+        if (value instanceof Number number) {
+            return number.intValue();
         }
         return fallback;
     }
@@ -425,8 +409,8 @@ public final class BoardStateIO {
      */
     private static boolean getBoolean(Map<String, Object> map, String key, boolean fallback) {
         Object value = map.get(key);
-        if (value instanceof Boolean) {
-            return (Boolean) value;
+        if (value instanceof Boolean bool) {
+            return bool;
         }
         return fallback;
     }
@@ -436,7 +420,7 @@ public final class BoardStateIO {
      */
     private static Boolean getBooleanObject(Map<String, Object> map, String key) {
         Object value = map.get(key);
-        return value instanceof Boolean ? (Boolean) value : null;
+        return value instanceof Boolean bool ? bool : null;
     }
 
     /**
@@ -444,8 +428,8 @@ public final class BoardStateIO {
      */
     private static Float getFloat(Map<String, Object> map, String key) {
         Object value = map.get(key);
-        if (value instanceof Number) {
-            return ((Number) value).floatValue();
+        if (value instanceof Number number) {
+            return number.floatValue();
         }
         return null;
     }
@@ -580,31 +564,15 @@ public final class BoardStateIO {
                 if (c == '\\' && index < input.length()) {
                     char esc = input.charAt(index++);
                     switch (esc) {
-                        case '"':
-                            out.append('"');
-                            break;
-                        case '\\':
-                            out.append('\\');
-                            break;
-                        case '/':
-                            out.append('/');
-                            break;
-                        case 'b':
-                            out.append('\b');
-                            break;
-                        case 'f':
-                            out.append('\f');
-                            break;
-                        case 'n':
-                            out.append('\n');
-                            break;
-                        case 'r':
-                            out.append('\r');
-                            break;
-                        case 't':
-                            out.append('\t');
-                            break;
-                        case 'u':
+                        case '"' -> out.append('"');
+                        case '\\' -> out.append('\\');
+                        case '/' -> out.append('/');
+                        case 'b' -> out.append('\b');
+                        case 'f' -> out.append('\f');
+                        case 'n' -> out.append('\n');
+                        case 'r' -> out.append('\r');
+                        case 't' -> out.append('\t');
+                        case 'u' -> {
                             if (index + 3 < input.length()) {
                                 String hex = input.substring(index, index + 4);
                                 try {
@@ -614,10 +582,8 @@ public final class BoardStateIO {
                                 }
                                 index += 4;
                             }
-                            break;
-                        default:
-                            out.append(esc);
-                            break;
+                        }
+                        default -> out.append(esc);
                     }
                     continue;
                 }
@@ -648,21 +614,29 @@ public final class BoardStateIO {
         /**
          * Parses a JSON number.
          */
+        @SuppressWarnings("UnnecessaryTemporaryOnConversionFromString")
         private Number parseNumber() {
             int start = index;
+            boolean hasDecimalOrExponent = false;
             while (index < input.length()) {
                 char c = input.charAt(index);
                 if ((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E') {
+                    if (c == '.' || c == 'e' || c == 'E') {
+                        hasDecimalOrExponent = true;
+                    }
                     index++;
                 } else {
                     break;
                 }
             }
+            if (index == start) {
+                return 0;
+            }
             String number = input.substring(start, index);
             if (number.isEmpty()) {
                 return 0;
             }
-            if (number.contains(".") || number.contains("e") || number.contains("E")) {
+            if (hasDecimalOrExponent) {
                 try {
                     return Double.parseDouble(number);
                 } catch (NumberFormatException ignored) {

@@ -29,8 +29,8 @@ public class BooleanProperty extends AbstractComponentProperty {
 
     @Override
     public void setValueFromEditor(Object value) {
-        if (value instanceof Boolean) {
-            setter.accept((Boolean) value);
+        if (value instanceof Boolean bool) {
+            setter.accept(bool);
         }
     }
 

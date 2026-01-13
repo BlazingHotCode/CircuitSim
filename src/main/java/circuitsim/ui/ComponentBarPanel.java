@@ -169,16 +169,17 @@ public class ComponentBarPanel extends JPanel {
     }
 
     private class GroupLabel extends JLabel {
-        private final JPopupMenu menu;
+        private final ComponentRegistry.Group group;
+        private JPopupMenu menu;
 
         private GroupLabel(ComponentRegistry.Group group) {
             super(group.getName());
+            this.group = group;
             setOpaque(true);
             setForeground(Colors.COMPONENT_BAR_TEXT);
             setBackground(Colors.COMPONENT_BAR_BG);
             setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            menu = buildMenu(group, this);
             addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseEntered(MouseEvent e) {
@@ -189,7 +190,7 @@ public class ComponentBarPanel extends JPanel {
                 @Override
                 public void mouseExited(MouseEvent e) {
                     setBackground(Colors.COMPONENT_BAR_BG);
-                    scheduleHide(menu, GroupLabel.this);
+                    scheduleHide(getMenu(), GroupLabel.this);
                 }
 
                 @Override
@@ -199,14 +200,22 @@ public class ComponentBarPanel extends JPanel {
             });
         }
 
+        private JPopupMenu getMenu() {
+            if (menu == null) {
+                menu = buildMenu(group, this);
+            }
+            return menu;
+        }
+
         private void showMenu() {
             cancelHide();
-            if (activeMenu != null && activeMenu != menu) {
+            JPopupMenu popup = getMenu();
+            if (activeMenu != null && activeMenu != popup) {
                 activeMenu.setVisible(false);
             }
-            activeMenu = menu;
-            if (!menu.isVisible()) {
-                menu.show(this, 0, getHeight());
+            activeMenu = popup;
+            if (!popup.isVisible()) {
+                popup.show(this, 0, getHeight());
             }
         }
     }
@@ -258,19 +267,19 @@ public class ComponentBarPanel extends JPanel {
         private Point pressScreenPoint;
         private boolean dragging;
 
-        private ComponentEntryPanel(ComponentRegistry.Entry entry) {
-            this.entry = entry;
+        private ComponentEntryPanel(ComponentRegistry.Entry registryEntry) {
+            this.entry = registryEntry;
             setLayout(new BorderLayout(8, 0));
             setBackground(Colors.COMPONENT_DROPDOWN_BG);
             setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            ComponentPreview preview = new ComponentPreview(entry);
-            JLabel name = new JLabel(entry.getName());
+            ComponentPreview preview = new ComponentPreview(this.entry);
+            JLabel name = new JLabel(this.entry.getName());
             name.setForeground(Colors.COMPONENT_ENTRY_TEXT);
             add(preview, BorderLayout.WEST);
             add(name, BorderLayout.CENTER);
-            if (entry.isCustom()) {
-                add(buildCustomActions(entry), BorderLayout.EAST);
+            if (this.entry.isCustom()) {
+                add(buildCustomActions(this.entry), BorderLayout.EAST);
             }
             setPreferredSize(new Dimension(200, ENTRY_HEIGHT));
             addMouseListener(new MouseAdapter() {
@@ -282,9 +291,6 @@ public class ComponentBarPanel extends JPanel {
                 @Override
                 public void mouseExited(MouseEvent e) {
                     setBackground(Colors.COMPONENT_DROPDOWN_BG);
-                    if (dragging) {
-                        return;
-                    }
                 }
 
                 @Override
@@ -299,18 +305,18 @@ public class ComponentBarPanel extends JPanel {
                     if (pressScreenPoint == null) {
                         return;
                     }
-                    if (entry.isCustom() && isClickOnAction(e.getPoint())) {
+                    if (ComponentEntryPanel.this.entry.isCustom() && isClickOnAction(e.getPoint())) {
                         pressScreenPoint = null;
                         dragging = false;
                         return;
                     }
                     Point releasePoint = e.getLocationOnScreen();
                     if (dragging) {
-                        circuitPanel.placeComponentAtScreenPoint(entry, releasePoint);
+                        circuitPanel.placeComponentAtScreenPoint(ComponentEntryPanel.this.entry, releasePoint);
                         circuitPanel.endPlacementMode();
                         hideActiveMenu();
                     } else {
-                        circuitPanel.beginPlacementMode(entry);
+                        circuitPanel.beginPlacementMode(ComponentEntryPanel.this.entry);
                         circuitPanel.updatePlacementFromScreenPoint(releasePoint);
                         hideActiveMenu();
                     }

@@ -3,7 +3,6 @@ package circuitsim.components.ports;
 import circuitsim.components.core.*;
 import circuitsim.components.properties.*;
 import circuitsim.components.wiring.*;
-
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
 import java.awt.Color;
@@ -13,19 +12,15 @@ import java.awt.Polygon;
 /**
  * Output port component for custom component editors.
  */
+@BuiltinComponent(group = "IO", paletteName = "Output", groupOrder = 70, paletteOrder = 20)
 public class CustomOutputPort extends SingleTerminalComponent {
     private static final int DEFAULT_SIZE = Grid.SIZE * 2;
     private boolean activeIndicator;
 
     public CustomOutputPort(int x, int y) {
-        super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 0f, 0.5f);
+        super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 0f, 0.5f, false);
         setDisplayName("Output");
         addProperty(new StringProperty("Port Name", this::getDisplayName, this::setDisplayName, false, true));
-    }
-
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
     }
 
     @Override

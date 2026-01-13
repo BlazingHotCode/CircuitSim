@@ -1,5 +1,6 @@
 package circuitsim.components.logic;
 
+import circuitsim.components.core.BuiltinComponent;
 import circuitsim.components.core.ConnectionPoint;
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
@@ -13,6 +14,7 @@ import java.util.List;
 /**
  * NOT (inverter) gate component with one input and one output.
  */
+@BuiltinComponent(group = "Logic", paletteName = "NOT", groupOrder = 20, paletteOrder = 50)
 public class NOTGate extends LogicGate {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 4;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 4;
@@ -51,15 +53,15 @@ public class NOTGate extends LogicGate {
         Color originalColor = g2.getColor();
         Stroke originalStroke = g2.getStroke();
         float strokeWidth = 1f;
-        if (originalStroke instanceof BasicStroke) {
-            strokeWidth = ((BasicStroke) originalStroke).getLineWidth();
+        if (originalStroke instanceof BasicStroke basicStroke) {
+            strokeWidth = basicStroke.getLineWidth();
         }
         g2.setStroke(new BasicStroke(strokeWidth, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
         g2.setColor(Colors.COMPONENT_STROKE);
 
         GateGeometry geo = computeGeometry();
-        int topY = geo.centerY - (geo.bodyHeight / 2);
-        int bottomY = topY + geo.bodyHeight;
+        int topY = geo.bodyY;
+        int bottomY = geo.bodyY + geo.bodyHeight;
         int inputY = clamp(geo.inputY, topY, bottomY);
 
         g2.setColor(isInputPowered(0) ? getPoweredColor() : Colors.COMPONENT_STROKE);

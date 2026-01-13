@@ -14,6 +14,7 @@ import java.util.List;
  * Implements boolean NAND logic: output is LOW only when both inputs are HIGH.
  * EXTENSIBLE: Inherits from modular LogicGate framework.
  */
+@BuiltinComponent(group = "Logic", paletteName = "NAND", groupOrder = 20, paletteOrder = 10)
 public class NANDGate extends LogicGate {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 4;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 4;
@@ -40,8 +41,8 @@ public class NANDGate extends LogicGate {
         g2.setColor(Colors.COMPONENT_STROKE);
         Stroke originalStroke = g2.getStroke();
         float strokeWidth = 1f;
-        if (originalStroke instanceof BasicStroke) {
-            strokeWidth = ((BasicStroke) originalStroke).getLineWidth();
+        if (originalStroke instanceof BasicStroke basicStroke) {
+            strokeWidth = basicStroke.getLineWidth();
         }
         g2.setStroke(new BasicStroke(strokeWidth, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
         
@@ -67,8 +68,8 @@ public class NANDGate extends LogicGate {
     @Override
     protected void drawGateBody(Graphics2D g2) {
         GateGeometry geo = computeGeometry();
-        int topY = geo.centerY - (geo.bodyHeight / 2);
-        int bottomY = topY + geo.bodyHeight;
+        int topY = geo.bodyY;
+        int bottomY = geo.bodyY + geo.bodyHeight;
         int inputAY = clamp(geo.inputAY, topY, bottomY);
         int inputBY = clamp(geo.inputBY, topY, bottomY);
 

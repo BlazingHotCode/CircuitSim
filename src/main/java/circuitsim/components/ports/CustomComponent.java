@@ -1,9 +1,6 @@
 package circuitsim.components.ports;
 
 import circuitsim.components.core.*;
-import circuitsim.components.properties.*;
-import circuitsim.components.wiring.*;
-
 import circuitsim.custom.CustomComponentDefinition;
 import circuitsim.custom.CustomComponentPort;
 import circuitsim.ui.Colors;
@@ -31,7 +28,8 @@ public class CustomComponent extends CircuitComponent {
     private final List<ConnectionPoint> outputPoints = new ArrayList<>();
 
     public CustomComponent(int x, int y, CustomComponentDefinition definition) {
-        super(x, y, BASE_HEIGHT, BASE_WIDTH, Math.max(0, portCount(definition)));
+        super(x, y, BASE_HEIGHT, BASE_WIDTH,
+                Math.max(0, portCount(definition)), false);
         this.definition = definition;
         this.inputs = definition == null ? java.util.Collections.emptyList() : definition.getInputs();
         this.outputs = definition == null ? java.util.Collections.emptyList() : definition.getOutputs();
@@ -53,6 +51,7 @@ public class CustomComponent extends CircuitComponent {
     /**
      * @return true if the provided point is an input port
      */
+    @Override
     public boolean isInputPoint(ConnectionPoint point) {
         return inputPoints.contains(point);
     }
@@ -60,13 +59,9 @@ public class CustomComponent extends CircuitComponent {
     /**
      * @return true if the provided point is an output port
      */
+    @Override
     public boolean isOutputPoint(ConnectionPoint point) {
         return outputPoints.contains(point);
-    }
-
-    @Override
-    protected boolean includeDefaultProperties() {
-        return false;
     }
 
     @Override
@@ -168,13 +163,13 @@ public class CustomComponent extends CircuitComponent {
         int inputCount = inputs.size();
         int outputCount = outputs.size();
         for (int i = 0; i < inputCount; i++) {
-            float y = (i + 1) / (float) (inputCount + 1);
-            addConnectionPoint(0f, y);
+            float relativeY = (i + 1) / (float) (inputCount + 1);
+            addConnectionPoint(0f, relativeY);
             inputPoints.add(getConnectionPoints().get(getConnectionPoints().size() - 1));
         }
         for (int i = 0; i < outputCount; i++) {
-            float y = (i + 1) / (float) (outputCount + 1);
-            addConnectionPoint(1f, y);
+            float relativeY = (i + 1) / (float) (outputCount + 1);
+            addConnectionPoint(1f, relativeY);
             outputPoints.add(getConnectionPoints().get(getConnectionPoints().size() - 1));
         }
     }

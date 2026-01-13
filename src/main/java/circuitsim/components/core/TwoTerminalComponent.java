@@ -5,7 +5,11 @@ package circuitsim.components.core;
  */
 public abstract class TwoTerminalComponent extends CircuitComponent {
     protected TwoTerminalComponent(int x, int y, int height, int width) {
-        super(x, y, height, width, 2);
+        this(x, y, height, width, true);
+    }
+
+    protected TwoTerminalComponent(int x, int y, int height, int width, boolean includeDefaultProperties) {
+        super(x, y, height, width, 2, includeDefaultProperties);
         addConnectionPoint(0f, 0.5f);
         addConnectionPoint(1f, 0.5f);
     }

@@ -37,19 +37,20 @@ public class FloatProperty extends AbstractComponentProperty {
      * @throws IllegalArgumentException when the provided value is not numeric
      */
     @Override
+    @SuppressWarnings("UnnecessaryTemporaryOnConversionFromString")
     public void setValueFromEditor(Object value) {
-        if (value instanceof Number) {
-            setter.accept(((Number) value).floatValue());
+        if (value instanceof Number number) {
+            setter.accept(number.floatValue());
             return;
         }
-        if (value instanceof String) {
-            String text = ((String) value).trim();
-            if (text.isEmpty()) {
+        if (value instanceof String textValue) {
+            String trimmed = textValue.trim();
+            if (trimmed.isEmpty()) {
                 setter.accept(0f);
                 return;
             }
             try {
-                setter.accept(Float.parseFloat(text));
+                setter.accept(Float.parseFloat(trimmed));
             } catch (NumberFormatException ignored) {
                 throw new IllegalArgumentException("Invalid number for " + getName());
             }
