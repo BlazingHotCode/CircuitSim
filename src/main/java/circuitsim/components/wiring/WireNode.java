@@ -11,6 +11,8 @@ public class WireNode {
     private int x;
     private int y;
     private final Set<Wire> wires = new HashSet<>();
+    private Long attachedComponentId;
+    private Integer attachedConnectionIndex;
 
     /**
      * @param x world X coordinate
@@ -41,6 +43,43 @@ public class WireNode {
     public void setPosition(int x, int y) {
         this.x = x;
         this.y = y;
+    }
+
+    /**
+     * Attaches this node to a component connection point so it follows when the component moves.
+     */
+    public void attachToComponent(long componentId, int connectionIndex) {
+        this.attachedComponentId = componentId;
+        this.attachedConnectionIndex = connectionIndex;
+    }
+
+    /**
+     * Clears any component attachment.
+     */
+    public void detachFromComponent() {
+        this.attachedComponentId = null;
+        this.attachedConnectionIndex = null;
+    }
+
+    /**
+     * @return true if this node is attached to a component point
+     */
+    public boolean isAttachedToComponent() {
+        return attachedComponentId != null && attachedConnectionIndex != null;
+    }
+
+    /**
+     * @return attached component id, or null
+     */
+    public Long getAttachedComponentId() {
+        return attachedComponentId;
+    }
+
+    /**
+     * @return attached connection point index, or null
+     */
+    public Integer getAttachedConnectionIndex() {
+        return attachedConnectionIndex;
     }
 
     /**

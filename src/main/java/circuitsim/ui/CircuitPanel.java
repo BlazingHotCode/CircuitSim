@@ -132,6 +132,8 @@ public class CircuitPanel extends JPanel {
     private CircuitComponent placementPreview;
     private Integer placementX;
     private Integer placementY;
+    private boolean draggingWithoutWires;
+    private boolean detachedWiresForShiftDrag;
 
     /**
      * @param propertiesPanel panel used to edit component properties
@@ -202,6 +204,7 @@ public class CircuitPanel extends JPanel {
                     int startX = selectedComponent.getConnectionPointWorldX(hitPoint);
                     int startY = selectedComponent.getConnectionPointWorldY(hitPoint);
                     newWireStartNode = getOrCreateNodeAt(startX, startY);
+                    attachWireNodeToConnectionPoint(newWireStartNode, hitPoint);
                     creatingWire = true;
                     lockedWire = e.isShiftDown();
                     pendingWireStartAnchor = null;
@@ -269,6 +272,10 @@ public class CircuitPanel extends JPanel {
                             return;
                         }
                         draggedComponent = component;
+                        draggingWithoutWires = e.isShiftDown();
+                        detachedWiresForShiftDrag = false;
+                        attachWireNodesAtComponent(component);
+                        updateAttachedWireNodes(component);
                         resizing = isInResizeHandle(component, worldX, worldY);
                         if (!resizing) {
                             dragOffsetX = worldX - component.getX();
@@ -420,7 +427,14 @@ public class CircuitPanel extends JPanel {
                     } else {
                         int snappedX = Grid.snap(worldX - dragOffsetX);
                         int snappedY = Grid.snap(worldY - dragOffsetY);
+                        if (draggingWithoutWires && !detachedWiresForShiftDrag) {
+                            detachWireAttachments(draggedComponent);
+                            detachedWiresForShiftDrag = true;
+                        }
                         draggedComponent.setPosition(snappedX, snappedY);
+                    }
+                    if (!draggingWithoutWires) {
+                        updateAttachedWireNodes(draggedComponent);
                     }
                     repaint();
                 }
@@ -478,6 +492,8 @@ public class CircuitPanel extends JPanel {
                 }
                 draggedComponent = null;
                 resizing = false;
+                draggingWithoutWires = false;
+                detachedWiresForShiftDrag = false;
                 if (didChange) {
                     recordHistoryState();
                 }
@@ -1743,6 +1759,9 @@ public class CircuitPanel extends JPanel {
         for (CircuitComponent component : selectedComponents) {
             component.setPosition(component.getX() + dx, component.getY() + dy);
         }
+        for (CircuitComponent component : selectedComponents) {
+            updateAttachedWireNodes(component);
+        }
         for (Wire wire : selectedWires) {
             wire.moveBy(dx, dy);
         }
@@ -1770,6 +1789,9 @@ public class CircuitPanel extends JPanel {
             int currentRotation = component.getRotationQuarterTurns() % 2;
             boolean rotateComponent = desiredRotation != currentRotation;
             rotateComponentAround(component, centerX, centerY, rotateComponent);
+        }
+        for (CircuitComponent component : selectedComponents) {
+            updateAttachedWireNodes(component);
         }
         for (WireNode node : nodesToRotate) {
             rotateWireNodeAround(node, centerX, centerY);
@@ -1924,6 +1946,7 @@ public class CircuitPanel extends JPanel {
             if (newWireStartNode != null && endNode != null
                     && (newWireStartNode.getX() != endNode.getX()
                     || newWireStartNode.getY() != endNode.getY())) {
+                attachWireNodeIfOnConnectionPoint(endNode);
                 Wire wire = Wire.connect(newWireStartNode, endNode, activeWireColor);
                 if (pendingWireStartAnchor != null) {
                     wire.setStartAnchorWire(pendingWireStartAnchor);
@@ -1932,6 +1955,7 @@ public class CircuitPanel extends JPanel {
                     wire.setEndAnchorWire(resolvedEndAnchor);
                 }
                 wires.add(wire);
+                rebuildWireAttachments();
                 recordHistoryState();
             }
     }
@@ -2175,6 +2199,7 @@ public class CircuitPanel extends JPanel {
             wire.setShowData(wireState.isShowData());
             wires.add(wire);
         }
+        rebuildWireAttachments();
         clearSelection();
         applyingState = false;
         repaint();
@@ -3192,6 +3217,153 @@ public class CircuitPanel extends JPanel {
             return custom.isInputPoint(point);
         }
         return false;
+    }
+
+    private void rebuildWireAttachments() {
+        java.util.Map<java.awt.Point, java.util.List<WireNode>> nodesByPoint = new java.util.HashMap<>();
+        for (Wire wire : wires) {
+            WireNode start = wire.getStart();
+            if (start != null) {
+                start.detachFromComponent();
+                nodesByPoint.computeIfAbsent(new java.awt.Point(start.getX(), start.getY()),
+                        key -> new java.util.ArrayList<>()).add(start);
+            }
+            WireNode end = wire.getEnd();
+            if (end != null) {
+                end.detachFromComponent();
+                nodesByPoint.computeIfAbsent(new java.awt.Point(end.getX(), end.getY()),
+                        key -> new java.util.ArrayList<>()).add(end);
+            }
+        }
+        for (int i = components.size() - 1; i >= 0; i--) {
+            CircuitComponent component = components.get(i);
+            java.util.List<ConnectionPoint> points = component.getConnectionPoints();
+            for (int index = 0; index < points.size(); index++) {
+                ConnectionPoint point = points.get(index);
+                int x = component.getConnectionPointWorldX(point);
+                int y = component.getConnectionPointWorldY(point);
+                java.util.List<WireNode> nodes = nodesByPoint.get(new java.awt.Point(x, y));
+                if (nodes == null) {
+                    continue;
+                }
+                for (WireNode node : nodes) {
+                    if (node != null && !node.isAttachedToComponent()) {
+                        node.attachToComponent(component.getId(), index);
+                    }
+                }
+            }
+        }
+    }
+
+    private void attachWireNodesAtComponent(CircuitComponent component) {
+        if (component == null) {
+            return;
+        }
+        java.util.List<ConnectionPoint> points = component.getConnectionPoints();
+        for (int index = 0; index < points.size(); index++) {
+            ConnectionPoint point = points.get(index);
+            int x = component.getConnectionPointWorldX(point);
+            int y = component.getConnectionPointWorldY(point);
+            for (Wire wire : wires) {
+                WireNode start = wire.getStart();
+                WireNode end = wire.getEnd();
+                if (start != null && start.getX() == x && start.getY() == y) {
+                    start.attachToComponent(component.getId(), index);
+                }
+                if (end != null && end.getX() == x && end.getY() == y) {
+                    end.attachToComponent(component.getId(), index);
+                }
+            }
+        }
+    }
+
+    private void attachWireNodeToConnectionPoint(WireNode node, ConnectionPoint point) {
+        if (node == null || point == null) {
+            return;
+        }
+        CircuitComponent owner = point.getOwner();
+        if (owner == null) {
+            return;
+        }
+        int index = owner.getConnectionPointIndex(point);
+        if (index < 0) {
+            return;
+        }
+        node.attachToComponent(owner.getId(), index);
+        node.setPosition(owner.getConnectionPointWorldX(point), owner.getConnectionPointWorldY(point));
+    }
+
+    private void attachWireNodeIfOnConnectionPoint(WireNode node) {
+        if (node == null) {
+            return;
+        }
+        for (int i = components.size() - 1; i >= 0; i--) {
+            CircuitComponent component = components.get(i);
+            java.util.List<ConnectionPoint> points = component.getConnectionPoints();
+            for (int index = 0; index < points.size(); index++) {
+                ConnectionPoint point = points.get(index);
+                int x = component.getConnectionPointWorldX(point);
+                int y = component.getConnectionPointWorldY(point);
+                if (node.getX() == x && node.getY() == y) {
+                    node.attachToComponent(component.getId(), index);
+                    return;
+                }
+            }
+        }
+    }
+
+    private void updateAttachedWireNodes(CircuitComponent component) {
+        if (component == null) {
+            return;
+        }
+        long id = component.getId();
+        java.util.List<ConnectionPoint> points = component.getConnectionPoints();
+        for (Wire wire : wires) {
+            updateAttachedWireNodeEndpoint(component, id, points, wire.getStart());
+            updateAttachedWireNodeEndpoint(component, id, points, wire.getEnd());
+        }
+    }
+
+    private void updateAttachedWireNodeEndpoint(CircuitComponent component, long id,
+                                                java.util.List<ConnectionPoint> points, WireNode node) {
+        if (node == null || !node.isAttachedToComponent()) {
+            return;
+        }
+        Long attachedId = node.getAttachedComponentId();
+        Integer attachedIndex = node.getAttachedConnectionIndex();
+        if (attachedId == null || attachedIndex == null || attachedId.longValue() != id) {
+            return;
+        }
+        int index = attachedIndex.intValue();
+        if (index < 0 || index >= points.size()) {
+            node.detachFromComponent();
+            return;
+        }
+        ConnectionPoint point = points.get(index);
+        int x = component.getConnectionPointWorldX(point);
+        int y = component.getConnectionPointWorldY(point);
+        node.setPosition(x, y);
+    }
+
+    private void detachWireAttachments(CircuitComponent component) {
+        if (component == null) {
+            return;
+        }
+        long id = component.getId();
+        for (Wire wire : wires) {
+            WireNode start = wire.getStart();
+            if (start != null && start.isAttachedToComponent()
+                    && start.getAttachedComponentId() != null
+                    && start.getAttachedComponentId().longValue() == id) {
+                start.detachFromComponent();
+            }
+            WireNode end = wire.getEnd();
+            if (end != null && end.isAttachedToComponent()
+                    && end.getAttachedComponentId() != null
+                    && end.getAttachedComponentId().longValue() == id) {
+                end.detachFromComponent();
+            }
+        }
     }
 
     /**
