@@ -579,7 +579,7 @@ public class CircuitPanel extends JPanel {
             drawSelectionArea(g2);
         }
         g2.setTransform(originalTransform);
-        if (treatCustomOutputsAsGround && isShowing()) {
+        if (isShowing()) {
             repaint(33);
         }
     }
@@ -2144,6 +2144,7 @@ public class CircuitPanel extends JPanel {
         Float internalResistance = null;
         Float resistance = null;
         Float powerWatt = null;
+        Boolean burnedOut = null;
         Boolean closed = null;
         switch (component) {
             case circuitsim.components.electrical.Battery battery -> {
@@ -2152,6 +2153,10 @@ public class CircuitPanel extends JPanel {
             }
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
             case circuitsim.components.electrical.PowerUser powerUser -> powerWatt = powerUser.getTargetPowerWatt();
+            case circuitsim.components.electrical.LightBulb lightBulb -> {
+                powerWatt = lightBulb.getRatedPowerWatt();
+                burnedOut = lightBulb.isBurnedOut();
+            }
             case circuitsim.components.electrical.Switch toggle -> closed = toggle.isClosed();
             case circuitsim.components.electrical.Source source -> closed = source.isActive();
             default -> {
@@ -2167,7 +2172,7 @@ public class CircuitPanel extends JPanel {
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
                 component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
-                voltage, internalResistance, resistance, powerWatt, closed);
+                voltage, internalResistance, resistance, powerWatt, burnedOut, closed);
     }
 
     /**
@@ -2266,6 +2271,14 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.PowerUser powerUser -> {
                 if (state.getPowerWatt() != null) {
                     powerUser.setTargetPowerWatt(state.getPowerWatt());
+                }
+            }
+            case circuitsim.components.electrical.LightBulb lightBulb -> {
+                if (state.getPowerWatt() != null) {
+                    lightBulb.setRatedPowerWatt(state.getPowerWatt());
+                }
+                if (state.getBurnedOut() != null) {
+                    lightBulb.setBurnedOut(state.getBurnedOut());
                 }
             }
             case circuitsim.components.electrical.Switch toggle -> {

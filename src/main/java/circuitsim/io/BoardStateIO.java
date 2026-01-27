@@ -88,6 +88,7 @@ public final class BoardStateIO {
             appendOptionalNumberField(out, firstField, "internalResistance", component.getInternalResistance());
             appendOptionalNumberField(out, firstField, "resistance", component.getResistance());
             appendOptionalNumberField(out, firstField, "powerWatt", component.getPowerWatt());
+            appendOptionalBooleanField(out, firstField, "burnedOut", component.getBurnedOut());
             appendOptionalBooleanField(out, firstField, "closed", component.getClosed());
             out.append('}');
         }
@@ -190,10 +191,11 @@ public final class BoardStateIO {
             Float internalResistance = getFloat(map, "internalResistance");
             Float resistance = getFloat(map, "resistance");
             Float powerWatt = getFloat(map, "powerWatt");
+            Boolean burnedOut = getBooleanObject(map, "burnedOut");
             Boolean closed = getBooleanObject(map, "closed");
             result.add(new BoardState.ComponentState(type, x, y, width, height, rotation,
                     displayName, customId, showTitle, showValues, voltage, internalResistance, resistance,
-                    powerWatt, closed));
+                    powerWatt, burnedOut, closed));
         }
         return result;
     }

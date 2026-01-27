@@ -1,3 +1,2 @@
-Light Bulb
 Sliding Resistor
 coordinates
