@@ -312,6 +312,13 @@ public class CircuitPanel extends JPanel {
                         recordHistoryState();
                         repaint();
                     }
+                    CircuitComponent component = findComponentAtPoint(worldX, worldY);
+                    if (component instanceof CustomComponent custom) {
+                        CustomComponentDefinition definition = custom.getDefinition();
+                        if (definition != null) {
+                            requestEditCustomComponent(definition.getId());
+                        }
+                    }
                     return;
                 }
                 if (e.getClickCount() == 1 && SwingUtilities.isLeftMouseButton(e)) {
