@@ -1914,18 +1914,19 @@ public class CircuitPanel extends JPanel {
                 return;
             }
         }
-        if (newWireStartNode != null && endNode != null
-                && (newWireStartNode.getX() != endNode.getX()
-                || newWireStartNode.getY() != endNode.getY())) {
-            Wire wire = Wire.connect(newWireStartNode, endNode, activeWireColor);
-            if (pendingWireStartAnchor != null) {
-                wire.setStartAnchorWire(pendingWireStartAnchor);
+            if (newWireStartNode != null && endNode != null
+                    && (newWireStartNode.getX() != endNode.getX()
+                    || newWireStartNode.getY() != endNode.getY())) {
+                Wire wire = Wire.connect(newWireStartNode, endNode, activeWireColor);
+                if (pendingWireStartAnchor != null) {
+                    wire.setStartAnchorWire(pendingWireStartAnchor);
+                }
+                if (resolvedEndAnchor != null) {
+                    wire.setEndAnchorWire(resolvedEndAnchor);
+                }
+                wires.add(wire);
+                recordHistoryState();
             }
-            if (resolvedEndAnchor != null) {
-                wire.setEndAnchorWire(resolvedEndAnchor);
-            }
-            wires.add(wire);
-        }
     }
 
     /**
