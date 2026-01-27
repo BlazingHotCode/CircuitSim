@@ -2142,6 +2142,7 @@ public class CircuitPanel extends JPanel {
         Float voltage = null;
         Float internalResistance = null;
         Float resistance = null;
+        Float powerWatt = null;
         Boolean closed = null;
         switch (component) {
             case circuitsim.components.electrical.Battery battery -> {
@@ -2149,6 +2150,7 @@ public class CircuitPanel extends JPanel {
                 internalResistance = battery.getInternalResistance();
             }
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
+            case circuitsim.components.electrical.PowerUser powerUser -> powerWatt = powerUser.getTargetPowerWatt();
             case circuitsim.components.electrical.Switch toggle -> closed = toggle.isClosed();
             case circuitsim.components.electrical.Source source -> closed = source.isActive();
             default -> {
@@ -2164,7 +2166,7 @@ public class CircuitPanel extends JPanel {
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
                 component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
-                voltage, internalResistance, resistance, closed);
+                voltage, internalResistance, resistance, powerWatt, closed);
     }
 
     /**
@@ -2258,6 +2260,11 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.Resistor resistor -> {
                 if (state.getResistance() != null) {
                     resistor.setResistance(state.getResistance());
+                }
+            }
+            case circuitsim.components.electrical.PowerUser powerUser -> {
+                if (state.getPowerWatt() != null) {
+                    powerUser.setTargetPowerWatt(state.getPowerWatt());
                 }
             }
             case circuitsim.components.electrical.Switch toggle -> {

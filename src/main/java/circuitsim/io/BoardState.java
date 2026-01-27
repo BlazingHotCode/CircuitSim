@@ -107,6 +107,7 @@ public final class BoardState {
         private final Float voltage;
         private final Float internalResistance;
         private final Float resistance;
+        private final Float powerWatt;
         private final Boolean closed;
 
         /**
@@ -128,7 +129,7 @@ public final class BoardState {
                               String displayName, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
             this(type, x, y, width, height, rotationQuarterTurns, displayName, null,
-                    showTitle, showValues, voltage, internalResistance, resistance, closed);
+                    showTitle, showValues, voltage, internalResistance, resistance, null, closed);
         }
 
         /**
@@ -145,11 +146,37 @@ public final class BoardState {
          * @param voltage battery voltage (optional)
          * @param internalResistance battery internal resistance (optional)
          * @param resistance resistor resistance (optional)
+         * @param powerWatt constant-power load wattage (optional)
          * @param closed switch closed state (optional)
          */
         public ComponentState(String type, int x, int y, int width, int height, int rotationQuarterTurns,
                               String displayName, String customId, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
+            this(type, x, y, width, height, rotationQuarterTurns, displayName, customId, showTitle, showValues,
+                    voltage, internalResistance, resistance, null, closed);
+        }
+
+        /**
+         * @param type component type name
+         * @param x left position
+         * @param y top position
+         * @param width width in pixels
+         * @param height height in pixels
+         * @param rotationQuarterTurns rotation in quarter turns
+         * @param displayName display name
+         * @param customId custom component id (optional)
+         * @param showTitle show title flag
+         * @param showValues show values flag
+         * @param voltage battery voltage (optional)
+         * @param internalResistance battery internal resistance (optional)
+         * @param resistance resistor resistance (optional)
+         * @param powerWatt constant-power load wattage (optional)
+         * @param closed switch closed state (optional)
+         */
+        public ComponentState(String type, int x, int y, int width, int height, int rotationQuarterTurns,
+                              String displayName, String customId, boolean showTitle, boolean showValues,
+                              Float voltage, Float internalResistance, Float resistance, Float powerWatt,
+                              Boolean closed) {
             this.type = type;
             this.x = x;
             this.y = y;
@@ -163,6 +190,7 @@ public final class BoardState {
             this.voltage = voltage;
             this.internalResistance = internalResistance;
             this.resistance = resistance;
+            this.powerWatt = powerWatt;
             this.closed = closed;
         }
 
@@ -255,6 +283,13 @@ public final class BoardState {
          */
         public Float getResistance() {
             return resistance;
+        }
+
+        /**
+         * @return constant-power load wattage, if applicable
+         */
+        public Float getPowerWatt() {
+            return powerWatt;
         }
 
         /**

@@ -5,6 +5,7 @@ import circuitsim.components.core.ConnectionPoint;
 import circuitsim.components.core.SwitchLike;
 import circuitsim.components.electrical.Battery;
 import circuitsim.components.electrical.Ground;
+import circuitsim.components.electrical.PowerUser;
 import circuitsim.components.electrical.Resistor;
 import circuitsim.components.electrical.Source;
 import circuitsim.components.instruments.Ammeter;
@@ -30,6 +31,8 @@ public final class CircuitPhysics {
     private static final double MIN_RESISTANCE = 1e-9;
     private static final double SHORT_THRESHOLD = 1e-6;
     private static final double LOGIC_INPUT_RESISTANCE = 2e4;
+    private static final double POWER_USER_MAX_RESISTANCE = 1e12;
+    private static final double POWER_USER_INITIAL_VOLTAGE_GUESS = 1.0;
 
     /**
      * Prevent instantiation.
@@ -111,6 +114,19 @@ public final class CircuitPhysics {
                             component.getConnectionPointWorldY(points.get(1)));
                     edges.add(new Edge(aIndex, bIndex,
                             Math.max(MIN_RESISTANCE, resistor.getResistance()), resistor));
+                }
+                case PowerUser powerUser -> {
+                    List<ConnectionPoint> points = powerUser.getConnectionPoints();
+                    if (points.size() < 2) {
+                        break;
+                    }
+                    int aIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(0)),
+                            component.getConnectionPointWorldY(points.get(0)));
+                    int bIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(1)),
+                            component.getConnectionPointWorldY(points.get(1)));
+                    edges.add(new Edge(aIndex, bIndex, getPowerUserResistance(powerUser), powerUser));
                 }
                 case Battery battery -> batteries.add(battery);
                 case Ammeter ammeter -> {
@@ -318,6 +334,14 @@ public final class CircuitPhysics {
                 edge.resistor.setComputedVoltage((float) Math.abs(voltage));
                 edge.resistor.setComputedAmpere((float) Math.abs(current));
             }
+            if (edge.powerUser != null) {
+                float absVoltage = (float) Math.abs(voltage);
+                float absCurrent = (float) Math.abs(current);
+                edge.powerUser.setComputedVoltage(absVoltage);
+                edge.powerUser.setComputedAmpere(absCurrent);
+                edge.powerUser.setComputedPowerWatt(absVoltage * absCurrent);
+                edge.powerUser.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
+            }
             if (edge.ammeter != null) {
                 edge.ammeter.setComputedAmpere((float) Math.abs(current));
             }
@@ -347,6 +371,12 @@ public final class CircuitPhysics {
                 edge.resistor.setComputedVoltage(0f);
                 edge.resistor.setComputedAmpere(0f);
             }
+            if (edge.powerUser != null) {
+                edge.powerUser.setComputedVoltage(0f);
+                edge.powerUser.setComputedAmpere(0f);
+                edge.powerUser.setComputedPowerWatt(0f);
+                edge.powerUser.setComputedResistance(0f);
+            }
             if (edge.ammeter != null) {
                 edge.ammeter.setComputedAmpere(0f);
             }
@@ -370,6 +400,12 @@ public final class CircuitPhysics {
             if (edge.resistor != null && !pruned.resistors.contains(edge.resistor)) {
                 edge.resistor.setComputedVoltage(0f);
                 edge.resistor.setComputedAmpere(0f);
+            }
+            if (edge.powerUser != null && !pruned.powerUsers.contains(edge.powerUser)) {
+                edge.powerUser.setComputedVoltage(0f);
+                edge.powerUser.setComputedAmpere(0f);
+                edge.powerUser.setComputedPowerWatt(0f);
+                edge.powerUser.setComputedResistance(0f);
             }
             if (edge.ammeter != null && !pruned.ammeters.contains(edge.ammeter)) {
                 edge.ammeter.setComputedAmpere(0f);
@@ -976,6 +1012,7 @@ public final class CircuitPhysics {
         private final double resistance;
         private final Wire wire;
         private final Resistor resistor;
+        private final PowerUser powerUser;
         private final Ammeter ammeter;
         private final SwitchLike circuitSwitch;
 
@@ -990,6 +1027,7 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = null;
             this.resistor = null;
+            this.powerUser = null;
             this.ammeter = null;
             this.circuitSwitch = null;
         }
@@ -1006,6 +1044,7 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = wire;
             this.resistor = null;
+            this.powerUser = null;
             this.ammeter = null;
             this.circuitSwitch = null;
         }
@@ -1022,6 +1061,24 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = null;
             this.resistor = resistor;
+            this.powerUser = null;
+            this.ammeter = null;
+            this.circuitSwitch = null;
+        }
+
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         * @param powerUser associated constant-power load
+         */
+        private Edge(int aIndex, int bIndex, double resistance, PowerUser powerUser) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = null;
+            this.powerUser = powerUser;
             this.ammeter = null;
             this.circuitSwitch = null;
         }
@@ -1038,6 +1095,7 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = null;
             this.resistor = null;
+            this.powerUser = null;
             this.ammeter = ammeter;
             this.circuitSwitch = null;
         }
@@ -1054,6 +1112,7 @@ public final class CircuitPhysics {
             this.resistance = resistance;
             this.wire = null;
             this.resistor = null;
+            this.powerUser = null;
             this.ammeter = null;
             this.circuitSwitch = circuitSwitch;
         }
@@ -1070,6 +1129,7 @@ public final class CircuitPhysics {
         private final List<Battery> batteries;
         private final java.util.Set<Wire> wires;
         private final java.util.Set<Resistor> resistors;
+        private final java.util.Set<PowerUser> powerUsers;
         private final java.util.Set<Ammeter> ammeters;
         private final java.util.Set<SwitchLike> switches;
         private final int[] nodeRemap;
@@ -1088,7 +1148,8 @@ public final class CircuitPhysics {
          */
         private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
                 List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors,
-                java.util.Set<Ammeter> ammeters, java.util.Set<SwitchLike> switches, int[] nodeRemap) {
+                java.util.Set<PowerUser> powerUsers, java.util.Set<Ammeter> ammeters,
+                java.util.Set<SwitchLike> switches, int[] nodeRemap) {
             this.nodeCount = nodeCount;
             this.groundIndex = groundIndex;
             this.positiveIndex = positiveIndex;
@@ -1096,10 +1157,30 @@ public final class CircuitPhysics {
             this.batteries = batteries;
             this.wires = wires;
             this.resistors = resistors;
+            this.powerUsers = powerUsers;
             this.ammeters = ammeters;
             this.switches = switches;
             this.nodeRemap = nodeRemap;
         }
+    }
+
+    private static double getPowerUserResistance(PowerUser powerUser) {
+        if (powerUser == null) {
+            return POWER_USER_MAX_RESISTANCE;
+        }
+        double power = powerUser.getTargetPowerWatt();
+        if (!(power > 0.0)) {
+            return POWER_USER_MAX_RESISTANCE;
+        }
+        double voltage = Math.abs(powerUser.getComputedVoltage());
+        if (voltage < 1e-6) {
+            voltage = POWER_USER_INITIAL_VOLTAGE_GUESS;
+        }
+        double resistance = (voltage * voltage) / power;
+        if (Double.isNaN(resistance) || Double.isInfinite(resistance)) {
+            resistance = POWER_USER_MAX_RESISTANCE;
+        }
+        return Math.max(MIN_RESISTANCE, Math.min(POWER_USER_MAX_RESISTANCE, resistance));
     }
 
     /**
@@ -1153,6 +1234,7 @@ public final class CircuitPhysics {
         java.util.List<Edge> prunedEdges = new java.util.ArrayList<>();
         java.util.Set<Wire> prunedWires = new java.util.HashSet<>();
         java.util.Set<Resistor> prunedResistors = new java.util.HashSet<>();
+        java.util.Set<PowerUser> prunedPowerUsers = new java.util.HashSet<>();
         java.util.Set<Ammeter> prunedAmmeters = new java.util.HashSet<>();
         java.util.Set<SwitchLike> prunedSwitches = new java.util.HashSet<>();
         for (Edge edge : edges) {
@@ -1166,6 +1248,9 @@ public final class CircuitPhysics {
                 } else if (edge.resistor != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.resistor);
                     prunedResistors.add(edge.resistor);
+                } else if (edge.powerUser != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.powerUser);
+                    prunedPowerUsers.add(edge.powerUser);
                 } else if (edge.ammeter != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.ammeter);
                     prunedAmmeters.add(edge.ammeter);
@@ -1192,10 +1277,11 @@ public final class CircuitPhysics {
         int remappedPositive = remap[positiveIndex];
         if (remappedGround < 0 || remappedPositive < 0) {
             return new GraphView(0, remappedGround, remappedPositive, java.util.Collections.emptyList(),
-                    java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedAmmeters, prunedSwitches,
-                    remap);
+                    java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedPowerUsers,
+                    prunedAmmeters, prunedSwitches, remap);
         }
         return new GraphView(newCount, remappedGround, remappedPositive, prunedEdges,
-                prunedBatteries, prunedWires, prunedResistors, prunedAmmeters, prunedSwitches, remap);
+                prunedBatteries, prunedWires, prunedResistors, prunedPowerUsers, prunedAmmeters, prunedSwitches,
+                remap);
     }
 }
