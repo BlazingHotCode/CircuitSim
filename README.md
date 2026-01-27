@@ -58,10 +58,12 @@ jar cfm dist/CircuitSim.jar dist/manifest.txt -C out .
 **Mouse**
 - Left click: select components/wires.
 - Drag: move components, wires, or a multi-selection.
+- Shift + drag component: move the component without dragging attached wires.
 - Drag empty space: box-select multiple items.
 - Right drag: pan the view.
 - Right click: context menu (add/delete, wire data toggle).
 - Double click wire: delete wire.
+- Double click custom component: open its editor.
 - Drag resize handle: resize component.
 - Click rotate handle or press R: rotate selection.
 - Ctrl + mouse wheel: zoom in/out.
@@ -104,6 +106,12 @@ jar cfm dist/CircuitSim.jar dist/manifest.txt -C out .
 - Gate outputs drive connected wires; those wires are marked as “logic powered” internally so logic can
   propagate even when the analog solver would otherwise show ~0 current.
 - Logic inputs enforce a single-wire-per-input connection rule to prevent ambiguous fan-in at the pin.
+
+## Wires And Connection Points
+
+- Wire endpoints placed on a component connection point are attached and will follow that point when the
+  component moves/resizes/rotates.
+- Hold Shift while dragging a component to move it without pulling attached wire endpoints.
 
 ## Custom Components And Temp Mode
 
