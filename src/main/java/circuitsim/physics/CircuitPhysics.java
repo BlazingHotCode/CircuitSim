@@ -149,9 +149,6 @@ public final class CircuitPhysics {
                 }
                 case CustomOutputPort outputPort -> {
                     outputPorts.add(outputPort);
-                    if (treatCustomOutputsAsGround) {
-                        grounds.add(new GroundAdapter(outputPort));
-                    }
                 }
                 case Ground ground -> {
                     grounds.add(ground);
@@ -160,6 +157,10 @@ public final class CircuitPhysics {
                 default -> {
                 }
             }
+        }
+
+        if (treatCustomOutputsAsGround && outputPorts.size() == 1) {
+            grounds.add(new GroundAdapter(outputPorts.get(0)));
         }
         for (Wire wire : wires) {
             if (wire.getStart() == null || wire.getEnd() == null) {
@@ -175,7 +176,7 @@ public final class CircuitPhysics {
         int nodeCount = nodeIndex.size();
         java.awt.Point groundPoint = resolveGroundPoint(grounds,
                 batteries.isEmpty() ? null : batteries.get(0), wires);
-        if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
+        if (groundPoint == null && treatCustomOutputsAsGround && outputPorts.size() == 1) {
             groundPoint = getOutputPortPoint(outputPorts.get(0));
         }
         if (groundPoint == null && !logicGates.isEmpty()) {
@@ -190,7 +191,17 @@ public final class CircuitPhysics {
             resetComputedValues(edges);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
-            resetOutputIndicators(outputPorts);
+            for (CustomOutputPort outputPort : outputPorts) {
+                List<ConnectionPoint> points = outputPort.getConnectionPoints();
+                if (points.isEmpty()) {
+                    outputPort.setActiveIndicator(false);
+                    continue;
+                }
+                ConnectionPoint point = points.get(0);
+                int outputX = outputPort.getConnectionPointWorldX(point);
+                int outputY = outputPort.getConnectionPointWorldY(point);
+                outputPort.setActiveIndicator(isWirePoweredAt(wires, outputX, outputY));
+            }
             resetGroundIndicators(groundComponents);
             return false;
         }
@@ -225,7 +236,7 @@ public final class CircuitPhysics {
             return false;
         }
         groundPoint = resolveGroundPoint(grounds, primaryBattery, wires);
-        if (groundPoint == null && treatCustomOutputsAsGround && !outputPorts.isEmpty()) {
+        if (groundPoint == null && treatCustomOutputsAsGround && outputPorts.size() == 1) {
             groundPoint = getOutputPortPoint(outputPorts.get(0));
         }
         Integer groundIndex = groundPoint == null ? null : nodeIndex.get(groundPoint);
@@ -316,11 +327,9 @@ public final class CircuitPhysics {
         }
         updateVoltmeterValues(voltmeters, nodeIndex, pruned, nodeVoltages);
         resetUnusedValues(edges, wires, pruned);
-        
-        // Update logic components after analog simulation
-        LogicPhysics.updateLogicComponents(components, wires);
+
         resetSwitchValues(switches);
-        updateOutputIndicators(outputPorts, nodeIndex, pruned, activeNodes);
+        updateOutputIndicators(outputPorts, nodeIndex, pruned, activeNodes, wires);
         updateGroundIndicators(groundComponents, nodeIndex, pruned, activeNodes, wires);
         return false;
     }
@@ -404,7 +413,8 @@ public final class CircuitPhysics {
     }
 
     private static void updateOutputIndicators(List<CustomOutputPort> outputPorts, Map<Point, Integer> nodeIndex,
-                                               GraphView pruned, java.util.Set<Integer> activeNodes) {
+                                               GraphView pruned, java.util.Set<Integer> activeNodes,
+                                               Collection<Wire> wires) {
         if (outputPorts.isEmpty()) {
             return;
         }
@@ -415,9 +425,13 @@ public final class CircuitPhysics {
                 continue;
             }
             ConnectionPoint point = points.get(0);
-            Integer originalIndex = nodeIndex.get(new Point(
-                    outputPort.getConnectionPointWorldX(point),
-                    outputPort.getConnectionPointWorldY(point)));
+            int outputX = outputPort.getConnectionPointWorldX(point);
+            int outputY = outputPort.getConnectionPointWorldY(point);
+            if (isWirePoweredAt(wires, outputX, outputY)) {
+                outputPort.setActiveIndicator(true);
+                continue;
+            }
+            Integer originalIndex = nodeIndex.get(new Point(Grid.snap(outputX), Grid.snap(outputY)));
             if (originalIndex == null) {
                 outputPort.setActiveIndicator(false);
                 continue;
@@ -442,7 +456,7 @@ public final class CircuitPhysics {
             ConnectionPoint point = points.get(0);
             int groundX = ground.getConnectionPointWorldX(point);
             int groundY = ground.getConnectionPointWorldY(point);
-            Integer originalIndex = nodeIndex.get(new Point(groundX, groundY));
+            Integer originalIndex = nodeIndex.get(new Point(Grid.snap(groundX), Grid.snap(groundY)));
             if (originalIndex == null) {
                 ground.setActiveIndicator(false);
                 continue;
@@ -465,13 +479,13 @@ public final class CircuitPhysics {
             if (start != null
                     && Grid.snap(start.getX()) == sx
                     && Grid.snap(start.getY()) == sy
-                    && wire.getComputedAmpere() > 0.0001f) {
+                    && (wire.isLogicPowered() || wire.getComputedAmpere() > 0.0001f)) {
                 return true;
             }
             if (end != null
                     && Grid.snap(end.getX()) == sx
                     && Grid.snap(end.getY()) == sy
-                    && wire.getComputedAmpere() > 0.0001f) {
+                    && (wire.isLogicPowered() || wire.getComputedAmpere() > 0.0001f)) {
                 return true;
             }
         }
@@ -513,12 +527,12 @@ public final class CircuitPhysics {
                 voltmeter.setComputedVoltage(0f);
                 continue;
             }
-            Integer aIndex = nodeIndex.get(new Point(
-                    voltmeter.getConnectionPointWorldX(points.get(0)),
-                    voltmeter.getConnectionPointWorldY(points.get(0))));
-            Integer bIndex = nodeIndex.get(new Point(
-                    voltmeter.getConnectionPointWorldX(points.get(1)),
-                    voltmeter.getConnectionPointWorldY(points.get(1))));
+            int ax = voltmeter.getConnectionPointWorldX(points.get(0));
+            int ay = voltmeter.getConnectionPointWorldY(points.get(0));
+            int bx = voltmeter.getConnectionPointWorldX(points.get(1));
+            int by = voltmeter.getConnectionPointWorldY(points.get(1));
+            Integer aIndex = nodeIndex.get(new Point(Grid.snap(ax), Grid.snap(ay)));
+            Integer bIndex = nodeIndex.get(new Point(Grid.snap(bx), Grid.snap(by)));
             if (aIndex == null || bIndex == null) {
                 voltmeter.setComputedVoltage(0f);
                 continue;
@@ -943,7 +957,7 @@ public final class CircuitPhysics {
      * Returns the node index for a point, creating one if missing.
      */
     private static int getNodeIndex(Map<Point, Integer> nodeIndex, int x, int y) {
-        Point key = new Point(x, y);
+        Point key = new Point(Grid.snap(x), Grid.snap(y));
         Integer existing = nodeIndex.get(key);
         if (existing != null) {
             return existing;

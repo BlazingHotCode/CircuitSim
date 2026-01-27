@@ -556,6 +556,9 @@ public class CircuitPanel extends JPanel {
             drawSelectionArea(g2);
         }
         g2.setTransform(originalTransform);
+        if (treatCustomOutputsAsGround && isShowing()) {
+            repaint(33);
+        }
     }
 
     /**
@@ -597,10 +600,7 @@ public class CircuitPanel extends JPanel {
         
         boolean shortCircuit = CircuitPhysics.update(simulationView.components, simulationView.wires,
                 treatCustomOutputsAsGround);
-        
-        // Update logic components after analog simulation
-        circuitsim.physics.LogicPhysics.updateLogicComponents(simulationView.components, simulationView.wires);
-        
+
         // Call after simulation hooks
         for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
             component.afterSimulation();

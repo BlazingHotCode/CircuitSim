@@ -4,6 +4,7 @@ import circuitsim.components.core.CircuitComponent;
 import circuitsim.components.core.ConnectionPoint;
 import circuitsim.components.electrical.Source;
 import circuitsim.components.logic.ANDGate;
+import circuitsim.components.logic.LogicGate;
 import circuitsim.components.logic.NANDGate;
 import circuitsim.components.logic.NOTGate;
 import circuitsim.components.logic.ORGate;
@@ -26,6 +27,9 @@ public final class LogicPhysics {
     private static final float HIGH_VOLTAGE = 5f;
     private static final float LOW_VOLTAGE = 0f;
     private static final float THRESHOLD_VOLTAGE = 2.5f;
+    private static final int MAX_STABILIZATION_PASSES = 32;
+    private static final java.util.Map<java.awt.Point, Boolean> OUTPUT_MEMORY =
+            new java.util.HashMap<>();
 
     public static final class LogicGateInputs {
         private final float[] voltages;
@@ -46,27 +50,129 @@ public final class LogicPhysics {
      * Updates all logic components in circuit.
      */
     public static void updateLogicComponents(Collection<CircuitComponent> components, Collection<Wire> wires) {
-        for (Wire wire : wires) {
-            wire.setLogicPowered(false);
+        if (components == null || wires == null) {
+            return;
         }
-        seedLogicInputs(components, wires);
-        // Ensure gate inputs can read logic state through multi-segment wire networks
-        // (including custom-component expansion wires) before evaluating gates.
-        propagateLogicPower(wires);
+
+        // Digital feedback (e.g., SR latches) requires repeated evaluation until outputs settle.
+        // Use an asynchronous relaxation update (Gauss-Seidel style) so feedback loops converge
+        // instead of oscillating between global states.
+        Connectivity connectivity = new Connectivity(wires);
+        java.util.List<LogicGate> logicGates = new java.util.ArrayList<>();
+        java.util.List<CustomOutputPort> outputPorts = new java.util.ArrayList<>();
+        java.util.List<Seed> seeds = new java.util.ArrayList<>();
+
         for (CircuitComponent component : components) {
             switch (component) {
-                case NANDGate nandGate -> updateNANDGate(nandGate, wires);
-                case ANDGate andGate -> updateANDGate(andGate, wires);
-                case ORGate orGate -> updateORGate(orGate, wires);
-                case XORGate xorGate -> updateXORGate(xorGate, wires);
-                case NOTGate notGate -> updateNOTGate(notGate, wires);
+                case LogicGate gate -> logicGates.add(gate);
+                case CustomOutputPort outputPort -> outputPorts.add(outputPort);
+                case CustomInputPort inputPort -> {
+                    if (inputPort.isActive()) {
+                        java.awt.Point seedPoint = getPrimaryPoint(inputPort);
+                        if (seedPoint != null) {
+                            seeds.add(new Seed(seedPoint, true));
+                        }
+                    }
+                }
+                case Source source -> {
+                    if (source.isActive()) {
+                        java.awt.Point seedPoint = getPrimaryPoint(source);
+                        if (seedPoint != null) {
+                            seeds.add(new Seed(seedPoint, true));
+                        }
+                    }
+                }
                 default -> {
                 }
             }
         }
-        // Spread any newly-driven outputs through connected networks.
-        propagateLogicPower(wires);
-        updateCustomOutputPorts(components, wires);
+
+        java.util.Map<java.awt.Point, Boolean> fixedHigh = new java.util.HashMap<>();
+        java.util.Map<java.awt.Point, Boolean> networkValue = new java.util.HashMap<>();
+
+        // Seed from explicit sources/inputs (fixed HIGH).
+        for (Seed seed : seeds) {
+            int root = connectivity.root(connectivity.getOrCreate(seed.point));
+            java.awt.Point rep = connectivity.representative(root);
+            if (rep != null && seed.high) {
+                fixedHigh.put(rep, true);
+                networkValue.put(rep, true);
+            }
+        }
+
+        // Seed from analog voltage (fixed HIGH).
+        for (Wire wire : wires) {
+            if (wire.getStart() == null || wire.getEnd() == null) {
+                continue;
+            }
+            if (wire.getComputedVoltage() < THRESHOLD_VOLTAGE) {
+                continue;
+            }
+            java.awt.Point start = snapPoint(wire.getStart().getX(), wire.getStart().getY());
+            int root = connectivity.root(connectivity.getOrCreate(start));
+            java.awt.Point rep = connectivity.representative(root);
+            if (rep != null) {
+                fixedHigh.put(rep, true);
+                networkValue.put(rep, true);
+            }
+        }
+
+        // Initialize from previous tick memory for deterministic latch startup.
+        for (LogicGate gate : logicGates) {
+            java.awt.Point outputKey = getOutputKey(gate);
+            if (outputKey == null) {
+                continue;
+            }
+            int root = connectivity.root(connectivity.getOrCreate(outputKey));
+            java.awt.Point rep = connectivity.representative(root);
+            if (rep == null || fixedHigh.containsKey(rep)) {
+                continue;
+            }
+            boolean remembered = OUTPUT_MEMORY.getOrDefault(outputKey, gate.isOutputPowered());
+            networkValue.put(rep, remembered);
+        }
+
+        for (int pass = 0; pass < MAX_STABILIZATION_PASSES; pass++) {
+            boolean changed = false;
+            for (LogicGate gate : logicGates) {
+                GateState state = evaluateGate(gate, connectivity, networkValue);
+                gate.setInputPowered(0, state.inputAHigh);
+                gate.setInputPowered(1, state.inputBHigh);
+
+                boolean previousOutput = gate.isOutputPowered();
+                gate.setOutputPowered(state.outputHigh);
+                if (previousOutput != state.outputHigh) {
+                    changed = true;
+                }
+
+                java.awt.Point outputKey = getOutputKey(gate);
+                if (outputKey == null) {
+                    continue;
+                }
+                int root = connectivity.root(connectivity.getOrCreate(outputKey));
+                java.awt.Point rep = connectivity.representative(root);
+                if (rep == null || fixedHigh.containsKey(rep)) {
+                    continue;
+                }
+                Boolean previous = networkValue.put(rep, state.outputHigh);
+                if (previous == null || previous.booleanValue() != state.outputHigh) {
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+
+        for (LogicGate gate : logicGates) {
+            java.awt.Point outputKey = getOutputKey(gate);
+            if (outputKey != null) {
+                OUTPUT_MEMORY.put(outputKey, gate.isOutputPowered());
+            }
+        }
+
+        applyNetworkPowerToWires(wires, connectivity, networkValue);
+        updateOutputPorts(outputPorts, connectivity, networkValue);
     }
     
     /**
@@ -166,7 +272,6 @@ public final class LogicPhysics {
         
         float maxVoltage = 0f;
         boolean hasConnection = false;
-        boolean hasCurrent = false;
         
         for (Wire wire : wires) {
             if (wire.getStart() != null && wire.getEnd() != null) {
@@ -182,18 +287,12 @@ public final class LogicPhysics {
                     if (wire.isLogicPowered()) {
                         return HIGH_VOLTAGE;
                     }
-                    if (wire.getComputedAmpere() > 0.0001f) {
-                        hasCurrent = true;
-                    }
                 }
             }
         }
 
         if (!hasConnection) {
             return 0f;
-        }
-        if (hasCurrent) {
-            return HIGH_VOLTAGE;
         }
         return maxVoltage;
     }
@@ -362,6 +461,187 @@ public final class LogicPhysics {
                     }
                 }
             }
+        }
+    }
+
+    private static final class Seed {
+        private final java.awt.Point point;
+        private final boolean high;
+
+        private Seed(java.awt.Point point, boolean high) {
+            this.point = point;
+            this.high = high;
+        }
+    }
+
+    private static final class GateState {
+        private final boolean inputAHigh;
+        private final boolean inputBHigh;
+        private final boolean outputHigh;
+
+        private GateState(boolean inputAHigh, boolean inputBHigh, boolean outputHigh) {
+            this.inputAHigh = inputAHigh;
+            this.inputBHigh = inputBHigh;
+            this.outputHigh = outputHigh;
+        }
+    }
+
+    private static GateState evaluateGate(LogicGate gate, Connectivity connectivity,
+                                          java.util.Map<java.awt.Point, Boolean> networkHigh) {
+        if (gate == null) {
+            return new GateState(false, false, false);
+        }
+        List<ConnectionPoint> points = gate.getConnectionPoints();
+        boolean inputA = false;
+        boolean inputB = false;
+        if (!points.isEmpty()) {
+            inputA = isHighAtPoint(gate, points.get(0), connectivity, networkHigh);
+            if (points.size() > 1) {
+                inputB = isHighAtPoint(gate, points.get(1), connectivity, networkHigh);
+            }
+        }
+
+        boolean outputHigh;
+        switch (gate) {
+            case NANDGate ignored -> outputHigh = !(inputA && inputB);
+            case ANDGate ignored -> outputHigh = inputA && inputB;
+            case ORGate ignored -> outputHigh = inputA || inputB;
+            case XORGate ignored -> outputHigh = inputA ^ inputB;
+            case NOTGate ignored -> outputHigh = !inputA;
+            default -> outputHigh = gate.isOutputPowered();
+        }
+
+        // For NOT gates, treat the second input marker as unused.
+        boolean effectiveInputB = gate instanceof NOTGate ? false : inputB;
+        return new GateState(inputA, effectiveInputB, outputHigh);
+    }
+
+    private static boolean isHighAtPoint(CircuitComponent owner, ConnectionPoint point,
+                                         Connectivity connectivity,
+                                         java.util.Map<java.awt.Point, Boolean> networkHigh) {
+        if (owner == null || point == null) {
+            return false;
+        }
+        java.awt.Point snapped = snapPoint(owner.getConnectionPointWorldX(point),
+                owner.getConnectionPointWorldY(point));
+        int root = connectivity.root(connectivity.getOrCreate(snapped));
+        return Boolean.TRUE.equals(networkHigh.get(connectivity.representative(root)));
+    }
+
+    private static java.awt.Point getPrimaryPoint(CircuitComponent component) {
+        if (component == null || component.getConnectionPoints().isEmpty()) {
+            return null;
+        }
+        ConnectionPoint point = component.getConnectionPoints().get(0);
+        return snapPoint(component.getConnectionPointWorldX(point),
+                component.getConnectionPointWorldY(point));
+    }
+
+    private static java.awt.Point snapPoint(int x, int y) {
+        return new java.awt.Point(Grid.snap(x), Grid.snap(y));
+    }
+
+    private static java.awt.Point getOutputKey(LogicGate gate) {
+        if (gate == null) {
+            return null;
+        }
+        ConnectionPoint output = gate.getOutputPoint();
+        if (output == null) {
+            return null;
+        }
+        return snapPoint(gate.getConnectionPointWorldX(output), gate.getConnectionPointWorldY(output));
+    }
+
+    private static void applyNetworkPowerToWires(Collection<Wire> wires,
+                                                 Connectivity connectivity,
+                                                 java.util.Map<java.awt.Point, Boolean> networkHigh) {
+        for (Wire wire : wires) {
+            if (wire.getStart() == null || wire.getEnd() == null) {
+                continue;
+            }
+            java.awt.Point start = snapPoint(wire.getStart().getX(), wire.getStart().getY());
+            int root = connectivity.root(connectivity.getOrCreate(start));
+            boolean high = Boolean.TRUE.equals(networkHigh.get(connectivity.representative(root)));
+            wire.setLogicPowered(high);
+        }
+    }
+
+    private static void updateOutputPorts(java.util.List<CustomOutputPort> outputPorts,
+                                          Connectivity connectivity,
+                                          java.util.Map<java.awt.Point, Boolean> networkHigh) {
+        for (CustomOutputPort outputPort : outputPorts) {
+            if (outputPort.getConnectionPoints().isEmpty()) {
+                outputPort.setActiveIndicator(false);
+                continue;
+            }
+            ConnectionPoint point = outputPort.getConnectionPoints().get(0);
+            boolean high = isHighAtPoint(outputPort, point, connectivity, networkHigh);
+            outputPort.setActiveIndicator(high);
+        }
+    }
+
+    private static final class Connectivity {
+        private final java.util.Map<java.awt.Point, Integer> indexByPoint = new java.util.HashMap<>();
+        private final java.util.List<java.awt.Point> points = new java.util.ArrayList<>();
+        private final java.util.List<Integer> parent = new java.util.ArrayList<>();
+
+        private Connectivity(Collection<Wire> wires) {
+            if (wires == null) {
+                return;
+            }
+            for (Wire wire : wires) {
+                if (wire.getStart() == null || wire.getEnd() == null) {
+                    continue;
+                }
+                java.awt.Point start = snapPoint(wire.getStart().getX(), wire.getStart().getY());
+                java.awt.Point end = snapPoint(wire.getEnd().getX(), wire.getEnd().getY());
+                union(getOrCreate(start), getOrCreate(end));
+            }
+        }
+
+        private int getOrCreate(java.awt.Point point) {
+            if (point == null) {
+                return -1;
+            }
+            Integer existing = indexByPoint.get(point);
+            if (existing != null) {
+                return existing;
+            }
+            int index = points.size();
+            java.awt.Point stored = new java.awt.Point(point);
+            points.add(stored);
+            indexByPoint.put(stored, index);
+            parent.add(index);
+            return index;
+        }
+
+        private int root(int index) {
+            if (index < 0 || index >= parent.size()) {
+                return -1;
+            }
+            int p = parent.get(index);
+            if (p == index) {
+                return index;
+            }
+            int r = root(p);
+            parent.set(index, r);
+            return r;
+        }
+
+        private java.awt.Point representative(int root) {
+            if (root < 0 || root >= points.size()) {
+                return null;
+            }
+            return points.get(root);
+        }
+
+        private void union(int a, int b) {
+            int ra = root(a);
+            int rb = root(b);
+            if (ra < 0 || rb < 0 || ra == rb) {
+                return;
+            }
+            parent.set(rb, ra);
         }
     }
 }
