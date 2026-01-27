@@ -1901,6 +1901,7 @@ public class CircuitPanel extends JPanel {
         double rotatedY = centerY + (componentCenterX - centerX);
         if (rotateComponent) {
             component.rotate90();
+            component.setSize(component.getWidth(), component.getHeight());
         }
         int newX = Grid.snap((int) Math.round(rotatedX - (component.getWidth() / 2.0)));
         int newY = Grid.snap((int) Math.round(rotatedY - (component.getHeight() / 2.0)));

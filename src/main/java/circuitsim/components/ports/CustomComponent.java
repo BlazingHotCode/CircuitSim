@@ -34,7 +34,7 @@ public class CustomComponent extends CircuitComponent {
         this.inputs = definition == null ? java.util.Collections.emptyList() : definition.getInputs();
         this.outputs = definition == null ? java.util.Collections.emptyList() : definition.getOutputs();
         setDisplayName(definition == null ? "Custom Component" : definition.getName());
-        int minHeight = calculateMinHeight();
+        int minHeight = calculateMinPortSpan();
         if (minHeight > getHeight()) {
             setSize(getWidth(), minHeight);
         }
@@ -154,7 +154,9 @@ public class CustomComponent extends CircuitComponent {
     }
 
     private int getPortMarkerSize() {
-        return Math.max(6, Math.round(Math.min(width, height) * 0.2f));
+        int maxByBounds = Math.max(4, Math.min(width, height) - 4);
+        int preferred = Math.max(6, Grid.SIZE / 2);
+        return Math.min(maxByBounds, preferred);
     }
 
     private void buildConnectionPoints() {
@@ -174,9 +176,25 @@ public class CustomComponent extends CircuitComponent {
         }
     }
 
-    private int calculateMinHeight() {
+    private int calculateMinPortSpan() {
         int portCount = Math.max(inputs.size(), outputs.size());
         return Math.max(BASE_HEIGHT, Grid.SIZE * (portCount + 1));
+    }
+
+    @Override
+    protected int getMinimumHeight() {
+        if ((getRotationQuarterTurns() % 2) == 0) {
+            return calculateMinPortSpan();
+        }
+        return BASE_HEIGHT;
+    }
+
+    @Override
+    protected int getMinimumWidth() {
+        if ((getRotationQuarterTurns() % 2) != 0) {
+            return Math.max(BASE_WIDTH, calculateMinPortSpan());
+        }
+        return BASE_WIDTH;
     }
 
     private static int portCount(CustomComponentDefinition definition) {
