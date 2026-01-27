@@ -8,6 +8,7 @@ import circuitsim.components.electrical.Ground;
 import circuitsim.components.electrical.LightBulb;
 import circuitsim.components.electrical.PowerUser;
 import circuitsim.components.electrical.Resistor;
+import circuitsim.components.electrical.SlidingResistor;
 import circuitsim.components.electrical.Source;
 import circuitsim.components.instruments.Ammeter;
 import circuitsim.components.instruments.Voltmeter;
@@ -97,6 +98,7 @@ public final class CircuitPhysics {
         List<Ground> groundComponents = new ArrayList<>();
         List<Voltmeter> voltmeters = new ArrayList<>();
         List<SwitchLike> switches = new ArrayList<>();
+        List<SlidingResistor> slidingResistors = new ArrayList<>();
         List<CustomOutputPort> outputPorts = new ArrayList<>();
         List<CustomInputPort> inputPorts = new ArrayList<>();
         List<Source> sources = new ArrayList<>();
@@ -142,6 +144,30 @@ public final class CircuitPhysics {
                             component.getConnectionPointWorldX(points.get(1)),
                             component.getConnectionPointWorldY(points.get(1)));
                     edges.add(new Edge(aIndex, bIndex, getLightBulbResistance(lightBulb), lightBulb));
+                }
+                case SlidingResistor slider -> {
+                    if (slider.getConnectionPoints().size() < 3) {
+                        break;
+                    }
+                    slidingResistors.add(slider);
+                    ConnectionPoint left = slider.getConnectionPoints().get(0);
+                    ConnectionPoint right = slider.getConnectionPoints().get(1);
+                    ConnectionPoint wiper = slider.getConnectionPoints().get(2);
+                    int aIndex = getNodeIndex(nodeIndex,
+                            slider.getConnectionPointWorldX(left),
+                            slider.getConnectionPointWorldY(left));
+                    int bIndex = getNodeIndex(nodeIndex,
+                            slider.getConnectionPointWorldX(right),
+                            slider.getConnectionPointWorldY(right));
+                    int wIndex = getNodeIndex(nodeIndex,
+                            slider.getConnectionPointWorldX(wiper),
+                            slider.getConnectionPointWorldY(wiper));
+                    double total = Math.max(MIN_RESISTANCE, slider.getResistance());
+                    double ratio = Math.max(0.0, Math.min(1.0, slider.getWiperPosition()));
+                    double rLeft = Math.max(MIN_RESISTANCE, total * ratio);
+                    double rRight = Math.max(MIN_RESISTANCE, total * (1.0 - ratio));
+                    edges.add(new Edge(aIndex, wIndex, rLeft));
+                    edges.add(new Edge(wIndex, bIndex, rRight));
                 }
                 case Battery battery -> batteries.add(battery);
                 case Ammeter ammeter -> {
@@ -220,6 +246,7 @@ public final class CircuitPhysics {
         addLogicGateInputLoads(edges, logicGates, nodeIndex, groundPoint);
         if (batteries.isEmpty()) {
             resetComputedValues(edges);
+            resetSlidingResistorValues(slidingResistors);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
             for (CustomOutputPort outputPort : outputPorts) {
@@ -260,6 +287,7 @@ public final class CircuitPhysics {
         ConnectionPoint positive = primaryBattery.getPositivePoint();
         if (negative == null || positive == null) {
             resetComputedValues(edges);
+            resetSlidingResistorValues(slidingResistors);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
             resetOutputIndicators(outputPorts);
@@ -277,6 +305,7 @@ public final class CircuitPhysics {
         }
         if (groundIndex == null || groundIndex < 0) {
             resetComputedValues(edges);
+            resetSlidingResistorValues(slidingResistors);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
             resetOutputIndicators(outputPorts);
@@ -298,6 +327,7 @@ public final class CircuitPhysics {
         }
         if (pruned.edges.isEmpty()) {
             resetComputedValues(edges);
+            resetSlidingResistorValues(slidingResistors);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
@@ -309,6 +339,7 @@ public final class CircuitPhysics {
         if (!allowShortCircuit && detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
                 pruned.edges)) {
             resetComputedValues(pruned.edges);
+            resetSlidingResistorValues(slidingResistors);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
@@ -321,6 +352,7 @@ public final class CircuitPhysics {
                 pruned.groundIndex);
         if (nodeVoltages == null) {
             resetComputedValues(pruned.edges);
+            resetSlidingResistorValues(slidingResistors);
             resetUnusedValues(edges, wires, pruned);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
@@ -328,6 +360,8 @@ public final class CircuitPhysics {
             resetGroundIndicators(groundComponents);
             return false;
         }
+
+        updateSlidingResistorValues(slidingResistors, nodeIndex, pruned, nodeVoltages);
 
         java.util.Set<Integer> activeNodes = new java.util.HashSet<>();
         for (Edge edge : pruned.edges) {
@@ -470,6 +504,70 @@ public final class CircuitPhysics {
             if (!circuitSwitch.isClosed()) {
                 circuitSwitch.setComputedAmpere(0f);
             }
+        }
+    }
+
+    private static void resetSlidingResistorValues(List<SlidingResistor> slidingResistors) {
+        for (SlidingResistor slider : slidingResistors) {
+            if (slider == null) {
+                continue;
+            }
+            slider.setComputedVoltage(0f);
+            slider.setComputedAmpere(0f);
+            slider.setComputedPowerWatt(0f);
+        }
+    }
+
+    private static void updateSlidingResistorValues(List<SlidingResistor> slidingResistors,
+            Map<Point, Integer> nodeIndex, GraphView pruned, double[] nodeVoltages) {
+        for (SlidingResistor slider : slidingResistors) {
+            if (slider == null || slider.getConnectionPoints().size() < 3) {
+                continue;
+            }
+            ConnectionPoint left = slider.getConnectionPoints().get(0);
+            ConnectionPoint right = slider.getConnectionPoints().get(1);
+            ConnectionPoint wiper = slider.getConnectionPoints().get(2);
+            int lx = slider.getConnectionPointWorldX(left);
+            int ly = slider.getConnectionPointWorldY(left);
+            int rx = slider.getConnectionPointWorldX(right);
+            int ry = slider.getConnectionPointWorldY(right);
+            int wx = slider.getConnectionPointWorldX(wiper);
+            int wy = slider.getConnectionPointWorldY(wiper);
+            Integer lIndex = nodeIndex.get(new Point(Grid.snap(lx), Grid.snap(ly)));
+            Integer rIndex = nodeIndex.get(new Point(Grid.snap(rx), Grid.snap(ry)));
+            Integer wIndex = nodeIndex.get(new Point(Grid.snap(wx), Grid.snap(wy)));
+            if (lIndex == null || rIndex == null || wIndex == null) {
+                slider.setComputedVoltage(0f);
+                slider.setComputedAmpere(0f);
+                slider.setComputedPowerWatt(0f);
+                continue;
+            }
+            int lRemap = pruned.nodeRemap[lIndex];
+            int rRemap = pruned.nodeRemap[rIndex];
+            int wRemap = pruned.nodeRemap[wIndex];
+            if (lRemap < 0 || rRemap < 0 || wRemap < 0
+                    || lRemap >= nodeVoltages.length
+                    || rRemap >= nodeVoltages.length
+                    || wRemap >= nodeVoltages.length) {
+                slider.setComputedVoltage(0f);
+                slider.setComputedAmpere(0f);
+                slider.setComputedPowerWatt(0f);
+                continue;
+            }
+            double total = Math.max(MIN_RESISTANCE, slider.getResistance());
+            double ratio = Math.max(0.0, Math.min(1.0, slider.getWiperPosition()));
+            double rLeft = Math.max(MIN_RESISTANCE, total * ratio);
+            double rRight = Math.max(MIN_RESISTANCE, total * (1.0 - ratio));
+            double vL = nodeVoltages[lRemap];
+            double vR = nodeVoltages[rRemap];
+            double vW = nodeVoltages[wRemap];
+            double iLeft = (vL - vW) / rLeft;
+            double iRight = (vW - vR) / rRight;
+            double amp = (Math.abs(iLeft) + Math.abs(iRight)) * 0.5;
+            double volt = Math.abs(vL - vR);
+            slider.setComputedVoltage((float) volt);
+            slider.setComputedAmpere((float) amp);
+            slider.setComputedPowerWatt((float) (volt * amp));
         }
     }
 

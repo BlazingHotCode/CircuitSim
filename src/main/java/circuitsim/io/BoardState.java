@@ -109,6 +109,7 @@ public final class BoardState {
         private final Float resistance;
         private final Float powerWatt;
         private final Boolean burnedOut;
+        private final Float wiperPosition;
         private final Boolean closed;
 
         /**
@@ -130,7 +131,7 @@ public final class BoardState {
                               String displayName, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
             this(type, x, y, width, height, rotationQuarterTurns, displayName, null,
-                    showTitle, showValues, voltage, internalResistance, resistance, null, null, closed);
+                    showTitle, showValues, voltage, internalResistance, resistance, null, null, null, closed);
         }
 
         /**
@@ -154,7 +155,7 @@ public final class BoardState {
                               String displayName, String customId, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
             this(type, x, y, width, height, rotationQuarterTurns, displayName, customId, showTitle, showValues,
-                    voltage, internalResistance, resistance, null, null, closed);
+                    voltage, internalResistance, resistance, null, null, null, closed);
         }
 
         /**
@@ -173,12 +174,13 @@ public final class BoardState {
          * @param resistance resistor resistance (optional)
          * @param powerWatt constant-power load wattage (optional)
          * @param burnedOut light bulb burned out state (optional)
+         * @param wiperPosition sliding resistor wiper position 0..1 (optional)
          * @param closed switch closed state (optional)
          */
         public ComponentState(String type, int x, int y, int width, int height, int rotationQuarterTurns,
                               String displayName, String customId, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Float powerWatt,
-                              Boolean burnedOut, Boolean closed) {
+                              Boolean burnedOut, Float wiperPosition, Boolean closed) {
             this.type = type;
             this.x = x;
             this.y = y;
@@ -194,6 +196,7 @@ public final class BoardState {
             this.resistance = resistance;
             this.powerWatt = powerWatt;
             this.burnedOut = burnedOut;
+            this.wiperPosition = wiperPosition;
             this.closed = closed;
         }
 
@@ -300,6 +303,13 @@ public final class BoardState {
          */
         public Boolean getBurnedOut() {
             return burnedOut;
+        }
+
+        /**
+         * @return sliding resistor wiper position, if applicable
+         */
+        public Float getWiperPosition() {
+            return wiperPosition;
         }
 
         /**

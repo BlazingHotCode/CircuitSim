@@ -76,6 +76,7 @@ public class CircuitPanel extends JPanel {
     private boolean resizing;
     private int wireDragX;
     private int wireDragY;
+    private circuitsim.components.electrical.SlidingResistor draggingSliderResistor;
     private static final int RESIZE_HANDLE_SIZE = 10;
     private static final int MIN_COMPONENT_SIZE = 20;
     private static final int ROTATE_HANDLE_SIZE = 16;
@@ -177,6 +178,18 @@ public class CircuitPanel extends JPanel {
                 if (placementEntry != null && SwingUtilities.isLeftMouseButton(e)) {
                     placeActiveComponentAt(worldX, worldY);
                     return;
+                }
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    circuitsim.components.electrical.SlidingResistor slider =
+                            findSlidingResistorHandleAt(worldX, worldY);
+                    if (slider != null) {
+                        draggingSliderResistor = slider;
+                        selectComponent(slider);
+                        slider.setWiperFromWorld(worldX, worldY);
+                        updateAttachedWireNodes(slider);
+                        repaint();
+                        return;
+                    }
                 }
                 if (creatingWire && lockedWire) {
                     int endX = Grid.snap(worldX);
@@ -359,6 +372,14 @@ public class CircuitPanel extends JPanel {
             @Override
             public void mouseDragged(MouseEvent e) {
                 updateLastMouseWorld(e.getX(), e.getY());
+                if (draggingSliderResistor != null) {
+                    int worldX = toWorldX(e.getX());
+                    int worldY = toWorldY(e.getY());
+                    draggingSliderResistor.setWiperFromWorld(worldX, worldY);
+                    updateAttachedWireNodes(draggingSliderResistor);
+                    repaint();
+                    return;
+                }
                 if (!panningView && SwingUtilities.isRightMouseButton(e)) {
                     panningView = true;
                     panStartX = e.getX();
@@ -448,6 +469,14 @@ public class CircuitPanel extends JPanel {
                 int worldX = toWorldX(e.getX());
                 int worldY = toWorldY(e.getY());
                 boolean didChange = false;
+                if (draggingSliderResistor != null) {
+                    draggingSliderResistor.setWiperFromWorld(worldX, worldY);
+                    updateAttachedWireNodes(draggingSliderResistor);
+                    draggingSliderResistor = null;
+                    recordHistoryState();
+                    repaint();
+                    return;
+                }
                 if (panningView) {
                     panningView = false;
                     if (!panMoved && (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger())) {
@@ -2145,6 +2174,7 @@ public class CircuitPanel extends JPanel {
         Float resistance = null;
         Float powerWatt = null;
         Boolean burnedOut = null;
+        Float wiperPosition = null;
         Boolean closed = null;
         switch (component) {
             case circuitsim.components.electrical.Battery battery -> {
@@ -2156,6 +2186,10 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.LightBulb lightBulb -> {
                 powerWatt = lightBulb.getRatedPowerWatt();
                 burnedOut = lightBulb.isBurnedOut();
+            }
+            case circuitsim.components.electrical.SlidingResistor slider -> {
+                resistance = slider.getResistance();
+                wiperPosition = slider.getWiperPosition();
             }
             case circuitsim.components.electrical.Switch toggle -> closed = toggle.isClosed();
             case circuitsim.components.electrical.Source source -> closed = source.isActive();
@@ -2172,7 +2206,7 @@ public class CircuitPanel extends JPanel {
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
                 component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
-                voltage, internalResistance, resistance, powerWatt, burnedOut, closed);
+                voltage, internalResistance, resistance, powerWatt, burnedOut, wiperPosition, closed);
     }
 
     /**
@@ -2279,6 +2313,14 @@ public class CircuitPanel extends JPanel {
                 }
                 if (state.getBurnedOut() != null) {
                     lightBulb.setBurnedOut(state.getBurnedOut());
+                }
+            }
+            case circuitsim.components.electrical.SlidingResistor slider -> {
+                if (state.getResistance() != null) {
+                    slider.setResistance(state.getResistance());
+                }
+                if (state.getWiperPosition() != null) {
+                    slider.setWiperPosition(state.getWiperPosition());
                 }
             }
             case circuitsim.components.electrical.Switch toggle -> {
@@ -3407,6 +3449,16 @@ public class CircuitPanel extends JPanel {
             }
         }
         return false;
+    }
+
+    private circuitsim.components.electrical.SlidingResistor findSlidingResistorHandleAt(int worldX, int worldY) {
+        for (CircuitComponent component : components) {
+            if (component instanceof circuitsim.components.electrical.SlidingResistor slider
+                    && slider.isSliderHandleHit(worldX, worldY)) {
+                return slider;
+            }
+        }
+        return null;
     }
 
     /**
