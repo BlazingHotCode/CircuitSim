@@ -551,10 +551,11 @@ public class CircuitSim {
         }
         circuitsim.components.ports.CustomComponent shell =
                 new circuitsim.components.ports.CustomComponent(componentState.getX(), componentState.getY(), definition);
+        shell.setRotationQuarterTurns(componentState.getRotationQuarterTurns());
         if (componentState.getWidth() > 0 && componentState.getHeight() > 0) {
             shell.setSize(componentState.getWidth(), componentState.getHeight());
         }
-        shell.setRotationQuarterTurns(componentState.getRotationQuarterTurns());
+        shell.setRotationQuarterTurns(shell.getRotationQuarterTurns());
         for (circuitsim.components.core.ConnectionPoint point : shell.getConnectionPoints()) {
             points.add(new java.awt.Point(shell.getConnectionPointWorldX(point),
                     shell.getConnectionPointWorldY(point)));

@@ -2289,10 +2289,12 @@ public class CircuitPanel extends JPanel {
      */
     private void applyComponentState(CircuitComponent component, BoardState.ComponentState state) {
         component.setPosition(state.getX(), state.getY());
+        component.setRotationQuarterTurns(state.getRotationQuarterTurns());
         if (state.getWidth() > 0 && state.getHeight() > 0) {
             component.setSize(state.getWidth(), state.getHeight());
         }
-        component.setRotationQuarterTurns(state.getRotationQuarterTurns());
+        // Re-apply rotation to sync aspect ratio to the loaded bounds (important for rotated saved components).
+        component.setRotationQuarterTurns(component.getRotationQuarterTurns());
         component.setDisplayName(state.getDisplayName());
         component.setShowTitle(state.isShowTitle());
         component.setShowPropertyValues(state.isShowValues());

@@ -114,6 +114,20 @@ public class VariableResistor extends CircuitComponent {
     }
 
     @Override
+    public void resizeKeepingRatio(int targetWidth, int targetHeight) {
+        // Special: allow stretching "length" for finer control; keep a stable thickness.
+        if ((getRotationQuarterTurns() % 2) == 0) {
+            // Horizontal: stretch width, fixed height.
+            width = Math.max(getMinimumWidth(), targetWidth);
+            height = getMinimumHeight();
+        } else {
+            // Vertical: stretch height, fixed width.
+            width = getMinimumWidth();
+            height = Math.max(getMinimumHeight(), targetHeight);
+        }
+    }
+
+    @Override
     protected int getMinimumWidth() {
         return (getRotationQuarterTurns() % 2) == 0 ? BASE_WIDTH : BASE_HEIGHT;
     }
@@ -324,11 +338,19 @@ public class VariableResistor extends CircuitComponent {
             double nx = -uy;
             double ny = ux;
 
-            double lead = Math.max(Grid.SIZE / 2.0, length * 0.15);
+            // Keep the lead-in/lead-out length visually stable as the resistor grows.
+            // Only shrink it when the component is too short to fit the symbol.
+            double lead = Grid.SIZE;
+            if ((lead * 2.0) > (length - 1.0)) {
+                lead = Math.max(2.0, (length - 1.0) / 2.0);
+            }
             double zigStart = lead;
             double zigEnd = length - lead;
-            int zigzagCount = Math.max(6, (int) Math.round((zigEnd - zigStart) / (Grid.SIZE * 0.6)));
-            zigzagCount = Math.min(24, zigzagCount);
+            // Keep zig-zag density roughly constant as the component length grows.
+            // Previously this was capped at 24 which caused long resistors to "stretch" the zig-zags.
+            double targetStep = Grid.SIZE * 0.6;
+            int zigzagCount = Math.max(6, (int) Math.round((zigEnd - zigStart) / targetStep));
+            zigzagCount = Math.min(160, zigzagCount);
             double step = (zigEnd - zigStart) / zigzagCount;
             double maxAmplitude = (Math.min(width, height) / 2.0) - 4;
             double amplitude = Math.max(Grid.SIZE * 0.4, Math.min(width, height) * 0.4);

@@ -352,6 +352,11 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
             }
         }
         this.rotationQuarterTurns = normalized;
+        // Keep the resize aspect ratio consistent with the current bounds.
+        // This is important when restoring rotation from saved state without calling rotate90().
+        if (height > 0) {
+            this.aspectRatio = width / (float) height;
+        }
     }
 
     /**
