@@ -8,7 +8,7 @@ import circuitsim.components.electrical.Ground;
 import circuitsim.components.electrical.LightBulb;
 import circuitsim.components.electrical.PowerUser;
 import circuitsim.components.electrical.Resistor;
-import circuitsim.components.electrical.SlidingResistor;
+import circuitsim.components.electrical.VariableResistor;
 import circuitsim.components.electrical.Source;
 import circuitsim.components.instruments.Ammeter;
 import circuitsim.components.instruments.Voltmeter;
@@ -98,7 +98,7 @@ public final class CircuitPhysics {
         List<Ground> groundComponents = new ArrayList<>();
         List<Voltmeter> voltmeters = new ArrayList<>();
         List<SwitchLike> switches = new ArrayList<>();
-        List<SlidingResistor> slidingResistors = new ArrayList<>();
+        List<VariableResistor> variableResistors = new ArrayList<>();
         List<CustomOutputPort> outputPorts = new ArrayList<>();
         List<CustomInputPort> inputPorts = new ArrayList<>();
         List<Source> sources = new ArrayList<>();
@@ -145,11 +145,11 @@ public final class CircuitPhysics {
                             component.getConnectionPointWorldY(points.get(1)));
                     edges.add(new Edge(aIndex, bIndex, getLightBulbResistance(lightBulb), lightBulb));
                 }
-                case SlidingResistor slider -> {
+                case VariableResistor slider -> {
                     if (slider.getConnectionPoints().size() < 3) {
                         break;
                     }
-                    slidingResistors.add(slider);
+                    variableResistors.add(slider);
                     ConnectionPoint left = slider.getConnectionPoints().get(0);
                     ConnectionPoint right = slider.getConnectionPoints().get(1);
                     ConnectionPoint wiper = slider.getConnectionPoints().get(2);
@@ -246,7 +246,7 @@ public final class CircuitPhysics {
         addLogicGateInputLoads(edges, logicGates, nodeIndex, groundPoint);
         if (batteries.isEmpty()) {
             resetComputedValues(edges);
-            resetSlidingResistorValues(slidingResistors);
+            resetVariableResistorValues(variableResistors);
             resetVoltmeterValues(voltmeters);
             resetSwitchValues(switches);
             for (CustomOutputPort outputPort : outputPorts) {
@@ -282,139 +282,329 @@ public final class CircuitPhysics {
             battery.setPositiveNodeIndex(posIndex);
         }
 
-        Battery primaryBattery = batteries.get(0);
-        ConnectionPoint negative = primaryBattery.getNegativePoint();
-        ConnectionPoint positive = primaryBattery.getPositivePoint();
-        if (negative == null || positive == null) {
-            resetComputedValues(edges);
-            resetSlidingResistorValues(slidingResistors);
-            resetVoltmeterValues(voltmeters);
-            resetSwitchValues(switches);
-            resetOutputIndicators(outputPorts);
-            resetGroundIndicators(groundComponents);
-            return false;
-        }
-        groundPoint = resolveGroundPoint(grounds, primaryBattery, wires);
-        if (groundPoint == null && treatCustomOutputsAsGround && outputPorts.size() == 1) {
-            groundPoint = getOutputPortPoint(outputPorts.get(0));
-        }
-        Integer groundIndex = groundPoint == null ? null : nodeIndex.get(groundPoint);
-        if (groundIndex == null || groundIndex < 0) {
-            java.awt.Point fallbackGround = getBatteryNegativePoint(primaryBattery);
-            groundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
-        }
-        if (groundIndex == null || groundIndex < 0) {
-            resetComputedValues(edges);
-            resetSlidingResistorValues(slidingResistors);
-            resetVoltmeterValues(voltmeters);
-            resetSwitchValues(switches);
-            resetOutputIndicators(outputPorts);
-            resetGroundIndicators(groundComponents);
-            return false;
-        }
-        int positiveIndex = getNodeIndex(nodeIndex,
-                primaryBattery.getConnectionPointWorldX(positive),
-                primaryBattery.getConnectionPointWorldY(positive));
-        GraphView pruned = pruneToConnected(nodeCount, edges, batteries, groundIndex, positiveIndex);
-        if (pruned.edges.isEmpty() && !grounds.isEmpty()) {
-            java.awt.Point fallbackGround = getBatteryNegativePoint(primaryBattery);
-            Integer fallbackGroundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
-            if (fallbackGroundIndex != null
-                    && fallbackGroundIndex >= 0
-                    && fallbackGroundIndex.intValue() != groundIndex.intValue()) {
-                pruned = pruneToConnected(nodeCount, edges, batteries, fallbackGroundIndex, positiveIndex);
+        // Multi-circuit solve: allow multiple disconnected battery-powered islands to work simultaneously.
+        resetComputedValues(edges);
+        resetVariableResistorValues(variableResistors);
+        resetVoltmeterValues(voltmeters);
+        resetSwitchValues(switches);
+        resetOutputIndicators(outputPorts);
+        resetGroundIndicators(groundComponents);
+
+        int[] componentIds = computeConnectedComponentIds(nodeCount, edges, batteries);
+        Map<Integer, List<Battery>> batteriesByComponent = new HashMap<>();
+        for (Battery battery : batteries) {
+            int internalIndex = battery.getInternalNodeIndex();
+            int positiveNodeIndex = battery.getPositiveNodeIndex();
+            if (internalIndex < 0 || positiveNodeIndex < 0 || internalIndex >= componentIds.length) {
+                continue;
             }
-        }
-        if (pruned.edges.isEmpty()) {
-            resetComputedValues(edges);
-            resetSlidingResistorValues(slidingResistors);
-            resetUnusedValues(edges, wires, pruned);
-            resetVoltmeterValues(voltmeters);
-            resetSwitchValues(switches);
-            resetOutputIndicators(outputPorts);
-            return false;
+            int cid = componentIds[internalIndex];
+            if (cid < 0) {
+                continue;
+            }
+            batteriesByComponent.computeIfAbsent(cid, ignored -> new ArrayList<>()).add(battery);
         }
 
-        boolean allowShortCircuit = areAllInputBatteries(batteries);
-        if (!allowShortCircuit && detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
-                pruned.edges)) {
-            resetComputedValues(pruned.edges);
-            resetSlidingResistorValues(slidingResistors);
-            resetUnusedValues(edges, wires, pruned);
-            resetVoltmeterValues(voltmeters);
-            resetSwitchValues(switches);
-            resetOutputIndicators(outputPorts);
-            resetGroundIndicators(groundComponents);
-            return true;
-        }
+        Map<Integer, List<Voltmeter>> voltmetersByComponent = groupVoltmetersByComponent(voltmeters, nodeIndex,
+                componentIds);
+        Map<Integer, List<CustomOutputPort>> outputsByComponent = groupOutputPortsByComponent(outputPorts, nodeIndex,
+                componentIds);
+        Map<Integer, List<Ground>> groundIndicatorsByComponent = groupGroundsByComponent(groundComponents, nodeIndex,
+                componentIds);
+        Map<Integer, List<Ground>> solveGroundsByComponent = groupGroundsByComponent(grounds, nodeIndex, componentIds);
+        Map<Integer, List<VariableResistor>> variableResistorsByComponent = groupVariableResistorsByComponent(
+                variableResistors, nodeIndex, componentIds);
 
-        double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
-                pruned.groundIndex);
-        if (nodeVoltages == null) {
-            resetComputedValues(pruned.edges);
-            resetSlidingResistorValues(slidingResistors);
-            resetUnusedValues(edges, wires, pruned);
-            resetVoltmeterValues(voltmeters);
-            resetSwitchValues(switches);
-            resetOutputIndicators(outputPorts);
-            resetGroundIndicators(groundComponents);
-            return false;
-        }
+        boolean anyShortCircuit = false;
+        java.util.IdentityHashMap<Battery, int[]> batteryIndexSnapshot = new java.util.IdentityHashMap<>();
+        for (Map.Entry<Integer, List<Battery>> entry : batteriesByComponent.entrySet()) {
+            int cid = entry.getKey();
+            List<Battery> componentBatteries = entry.getValue();
+            if (componentBatteries == null || componentBatteries.isEmpty()) {
+                continue;
+            }
+            Battery reference = null;
+            for (Battery battery : componentBatteries) {
+                if (battery.getPositiveNodeIndex() >= 0 && battery.getInternalNodeIndex() >= 0) {
+                    reference = battery;
+                    break;
+                }
+            }
+            if (reference == null) {
+                continue;
+            }
 
-        updateSlidingResistorValues(slidingResistors, nodeIndex, pruned, nodeVoltages);
+            batteryIndexSnapshot.clear();
+            for (Battery battery : componentBatteries) {
+                batteryIndexSnapshot.put(battery, new int[] {
+                        battery.getPositiveNodeIndex(), battery.getInternalNodeIndex()
+                });
+            }
 
-        java.util.Set<Integer> activeNodes = new java.util.HashSet<>();
-        for (Edge edge : pruned.edges) {
-            int a = edge.aIndex;
-            int b = edge.bIndex;
-            double va = nodeVoltages[a];
-            double vb = nodeVoltages[b];
-            double voltage = va - vb;
-            double current = voltage / edge.resistance;
-            if (Math.abs(current) > 0.0001) {
-                activeNodes.add(a);
-                activeNodes.add(b);
+            Integer groundIndex = null;
+            List<Ground> solveGrounds = solveGroundsByComponent.get(cid);
+            if (solveGrounds != null) {
+                for (Ground ground : solveGrounds) {
+                    List<ConnectionPoint> points = ground.getConnectionPoints();
+                    if (points.isEmpty()) {
+                        continue;
+                    }
+                    ConnectionPoint point = points.get(0);
+                    int gx = ground.getConnectionPointWorldX(point);
+                    int gy = ground.getConnectionPointWorldY(point);
+                    Integer idx = nodeIndex.get(new Point(Grid.snap(gx), Grid.snap(gy)));
+                    if (idx != null && idx >= 0) {
+                        groundIndex = idx;
+                        break;
+                    }
+                }
             }
-            if (edge.wire != null) {
-                edge.wire.setComputedVoltage((float) Math.abs(voltage));
-                edge.wire.setComputedAmpere((float) Math.abs(current));
+            if (groundIndex == null) {
+                java.awt.Point fallbackGround = getBatteryNegativePoint(reference);
+                groundIndex = fallbackGround == null ? null : nodeIndex.get(fallbackGround);
             }
-            if (edge.resistor != null) {
-                edge.resistor.setComputedVoltage((float) Math.abs(voltage));
-                edge.resistor.setComputedAmpere((float) Math.abs(current));
+            if (groundIndex == null || groundIndex < 0) {
+                for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
+                    snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
+                    snapshot.getKey().setInternalNodeIndex(snapshot.getValue()[1]);
+                }
+                continue;
             }
-            if (edge.powerUser != null) {
-                float absVoltage = (float) Math.abs(voltage);
-                float absCurrent = (float) Math.abs(current);
-                edge.powerUser.setComputedVoltage(absVoltage);
-                edge.powerUser.setComputedAmpere(absCurrent);
-                edge.powerUser.setComputedPowerWatt(absVoltage * absCurrent);
-                edge.powerUser.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
+
+            int positiveIndex = reference.getPositiveNodeIndex();
+            GraphView pruned = pruneToConnected(nodeCount, edges, componentBatteries, groundIndex, positiveIndex);
+            if (pruned.edges.isEmpty()) {
+                for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
+                    snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
+                    snapshot.getKey().setInternalNodeIndex(snapshot.getValue()[1]);
+                }
+                continue;
             }
-            if (edge.lightBulb != null) {
-                float absVoltage = (float) Math.abs(voltage);
-                float absCurrent = (float) Math.abs(current);
-                float absPower = absVoltage * absCurrent;
-                edge.lightBulb.setComputedVoltage(absVoltage);
-                edge.lightBulb.setComputedAmpere(absCurrent);
-                edge.lightBulb.setComputedPowerWatt(absPower);
-                edge.lightBulb.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
-                edge.lightBulb.updateBurnout(absPower);
+
+            boolean allowShortCircuit = areAllInputBatteries(componentBatteries);
+            if (!allowShortCircuit && detectShortCircuit(pruned.positiveIndex, pruned.groundIndex, pruned.nodeCount,
+                    pruned.edges)) {
+                anyShortCircuit = true;
+                for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
+                    snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
+                    snapshot.getKey().setInternalNodeIndex(snapshot.getValue()[1]);
+                }
+                continue;
             }
-            if (edge.ammeter != null) {
-                edge.ammeter.setComputedAmpere((float) Math.abs(current));
+
+            double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
+                    pruned.groundIndex);
+            if (nodeVoltages == null) {
+                for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
+                    snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
+                    snapshot.getKey().setInternalNodeIndex(snapshot.getValue()[1]);
+                }
+                continue;
             }
-            if (edge.circuitSwitch != null) {
-                edge.circuitSwitch.setComputedAmpere((float) Math.abs(current));
+
+            List<VariableResistor> componentVariableResistors = variableResistorsByComponent.get(cid);
+            if (componentVariableResistors != null) {
+                updateVariableResistorValues(componentVariableResistors, nodeIndex, pruned, nodeVoltages);
+            }
+
+            java.util.Set<Integer> activeNodes = new java.util.HashSet<>();
+            for (Edge edge : pruned.edges) {
+                int a = edge.aIndex;
+                int b = edge.bIndex;
+                double va = nodeVoltages[a];
+                double vb = nodeVoltages[b];
+                double voltage = va - vb;
+                double current = voltage / edge.resistance;
+                if (Math.abs(current) > 0.0001) {
+                    activeNodes.add(a);
+                    activeNodes.add(b);
+                }
+                if (edge.wire != null) {
+                    edge.wire.setComputedVoltage((float) Math.abs(voltage));
+                    edge.wire.setComputedAmpere((float) Math.abs(current));
+                }
+                if (edge.resistor != null) {
+                    edge.resistor.setComputedVoltage((float) Math.abs(voltage));
+                    edge.resistor.setComputedAmpere((float) Math.abs(current));
+                }
+                if (edge.powerUser != null) {
+                    float absVoltage = (float) Math.abs(voltage);
+                    float absCurrent = (float) Math.abs(current);
+                    edge.powerUser.setComputedVoltage(absVoltage);
+                    edge.powerUser.setComputedAmpere(absCurrent);
+                    edge.powerUser.setComputedPowerWatt(absVoltage * absCurrent);
+                    edge.powerUser.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
+                }
+                if (edge.lightBulb != null) {
+                    float absVoltage = (float) Math.abs(voltage);
+                    float absCurrent = (float) Math.abs(current);
+                    float absPower = absVoltage * absCurrent;
+                    edge.lightBulb.setComputedVoltage(absVoltage);
+                    edge.lightBulb.setComputedAmpere(absCurrent);
+                    edge.lightBulb.setComputedPowerWatt(absPower);
+                    edge.lightBulb.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
+                    edge.lightBulb.updateBurnout(absPower);
+                }
+                if (edge.ammeter != null) {
+                    edge.ammeter.setComputedAmpere((float) Math.abs(current));
+                }
+                if (edge.circuitSwitch != null) {
+                    edge.circuitSwitch.setComputedAmpere((float) Math.abs(current));
+                }
+            }
+
+            List<Voltmeter> componentVoltmeters = voltmetersByComponent.get(cid);
+            if (componentVoltmeters != null) {
+                updateVoltmeterValues(componentVoltmeters, nodeIndex, pruned, nodeVoltages);
+            }
+
+            List<CustomOutputPort> componentOutputs = outputsByComponent.get(cid);
+            if (componentOutputs != null) {
+                updateOutputIndicators(componentOutputs, nodeIndex, pruned, activeNodes, wires);
+            }
+
+            List<Ground> componentGroundIndicators = groundIndicatorsByComponent.get(cid);
+            if (componentGroundIndicators != null) {
+                updateGroundIndicators(componentGroundIndicators, nodeIndex, pruned, activeNodes, wires);
+            }
+
+            for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
+                snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
+                snapshot.getKey().setInternalNodeIndex(snapshot.getValue()[1]);
             }
         }
-        updateVoltmeterValues(voltmeters, nodeIndex, pruned, nodeVoltages);
-        resetUnusedValues(edges, wires, pruned);
 
         resetSwitchValues(switches);
-        updateOutputIndicators(outputPorts, nodeIndex, pruned, activeNodes, wires);
-        updateGroundIndicators(groundComponents, nodeIndex, pruned, activeNodes, wires);
-        return false;
+        return anyShortCircuit;
+    }
+
+    private static int[] computeConnectedComponentIds(int nodeCount, List<Edge> edges, List<Battery> batteries) {
+        int[] componentIds = new int[nodeCount];
+        java.util.Arrays.fill(componentIds, -1);
+        java.util.List<java.util.List<Integer>> adjacency = new java.util.ArrayList<>();
+        for (int i = 0; i < nodeCount; i++) {
+            adjacency.add(new java.util.ArrayList<>());
+        }
+        for (Edge edge : edges) {
+            adjacency.get(edge.aIndex).add(edge.bIndex);
+            adjacency.get(edge.bIndex).add(edge.aIndex);
+        }
+        for (Battery battery : batteries) {
+            int p = battery.getPositiveNodeIndex();
+            int n = battery.getInternalNodeIndex();
+            if (p >= 0 && n >= 0 && p < nodeCount && n < nodeCount) {
+                adjacency.get(p).add(n);
+                adjacency.get(n).add(p);
+            }
+        }
+        int nextId = 0;
+        java.util.ArrayDeque<Integer> queue = new java.util.ArrayDeque<>();
+        for (int i = 0; i < nodeCount; i++) {
+            if (componentIds[i] >= 0) {
+                continue;
+            }
+            componentIds[i] = nextId;
+            queue.clear();
+            queue.add(i);
+            while (!queue.isEmpty()) {
+                int current = queue.removeFirst();
+                for (int neighbor : adjacency.get(current)) {
+                    if (neighbor < 0 || neighbor >= nodeCount) {
+                        continue;
+                    }
+                    if (componentIds[neighbor] >= 0) {
+                        continue;
+                    }
+                    componentIds[neighbor] = nextId;
+                    queue.add(neighbor);
+                }
+            }
+            nextId++;
+        }
+        return componentIds;
+    }
+
+    private static Map<Integer, List<Voltmeter>> groupVoltmetersByComponent(List<Voltmeter> voltmeters,
+            Map<Point, Integer> nodeIndex, int[] componentIds) {
+        Map<Integer, List<Voltmeter>> result = new HashMap<>();
+        for (Voltmeter voltmeter : voltmeters) {
+            List<ConnectionPoint> points = voltmeter.getConnectionPoints();
+            if (points.size() < 2) {
+                continue;
+            }
+            int ax = voltmeter.getConnectionPointWorldX(points.get(0));
+            int ay = voltmeter.getConnectionPointWorldY(points.get(0));
+            Integer aIndex = nodeIndex.get(new Point(Grid.snap(ax), Grid.snap(ay)));
+            if (aIndex == null || aIndex < 0 || aIndex >= componentIds.length) {
+                continue;
+            }
+            int cid = componentIds[aIndex];
+            result.computeIfAbsent(cid, ignored -> new ArrayList<>()).add(voltmeter);
+        }
+        return result;
+    }
+
+    private static Map<Integer, List<CustomOutputPort>> groupOutputPortsByComponent(List<CustomOutputPort> outputPorts,
+            Map<Point, Integer> nodeIndex, int[] componentIds) {
+        Map<Integer, List<CustomOutputPort>> result = new HashMap<>();
+        for (CustomOutputPort outputPort : outputPorts) {
+            List<ConnectionPoint> points = outputPort.getConnectionPoints();
+            if (points.isEmpty()) {
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            int x = outputPort.getConnectionPointWorldX(point);
+            int y = outputPort.getConnectionPointWorldY(point);
+            Integer idx = nodeIndex.get(new Point(Grid.snap(x), Grid.snap(y)));
+            if (idx == null || idx < 0 || idx >= componentIds.length) {
+                continue;
+            }
+            int cid = componentIds[idx];
+            result.computeIfAbsent(cid, ignored -> new ArrayList<>()).add(outputPort);
+        }
+        return result;
+    }
+
+    private static Map<Integer, List<Ground>> groupGroundsByComponent(List<Ground> grounds, Map<Point, Integer> nodeIndex,
+            int[] componentIds) {
+        Map<Integer, List<Ground>> result = new HashMap<>();
+        for (Ground ground : grounds) {
+            List<ConnectionPoint> points = ground.getConnectionPoints();
+            if (points.isEmpty()) {
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            int x = ground.getConnectionPointWorldX(point);
+            int y = ground.getConnectionPointWorldY(point);
+            Integer idx = nodeIndex.get(new Point(Grid.snap(x), Grid.snap(y)));
+            if (idx == null || idx < 0 || idx >= componentIds.length) {
+                continue;
+            }
+            int cid = componentIds[idx];
+            result.computeIfAbsent(cid, ignored -> new ArrayList<>()).add(ground);
+        }
+        return result;
+    }
+
+    private static Map<Integer, List<VariableResistor>> groupVariableResistorsByComponent(
+            List<VariableResistor> variableResistors, Map<Point, Integer> nodeIndex, int[] componentIds) {
+        Map<Integer, List<VariableResistor>> result = new HashMap<>();
+        for (VariableResistor slider : variableResistors) {
+            List<ConnectionPoint> points = slider.getConnectionPoints();
+            if (points.isEmpty()) {
+                continue;
+            }
+            ConnectionPoint point = points.get(0);
+            int x = slider.getConnectionPointWorldX(point);
+            int y = slider.getConnectionPointWorldY(point);
+            Integer idx = nodeIndex.get(new Point(Grid.snap(x), Grid.snap(y)));
+            if (idx == null || idx < 0 || idx >= componentIds.length) {
+                continue;
+            }
+            int cid = componentIds[idx];
+            result.computeIfAbsent(cid, ignored -> new ArrayList<>()).add(slider);
+        }
+        return result;
     }
 
     /**
@@ -507,8 +697,8 @@ public final class CircuitPhysics {
         }
     }
 
-    private static void resetSlidingResistorValues(List<SlidingResistor> slidingResistors) {
-        for (SlidingResistor slider : slidingResistors) {
+    private static void resetVariableResistorValues(List<VariableResistor> variableResistors) {
+        for (VariableResistor slider : variableResistors) {
             if (slider == null) {
                 continue;
             }
@@ -518,9 +708,9 @@ public final class CircuitPhysics {
         }
     }
 
-    private static void updateSlidingResistorValues(List<SlidingResistor> slidingResistors,
+    private static void updateVariableResistorValues(List<VariableResistor> variableResistors,
             Map<Point, Integer> nodeIndex, GraphView pruned, double[] nodeVoltages) {
-        for (SlidingResistor slider : slidingResistors) {
+        for (VariableResistor slider : variableResistors) {
             if (slider == null || slider.getConnectionPoints().size() < 3) {
                 continue;
             }

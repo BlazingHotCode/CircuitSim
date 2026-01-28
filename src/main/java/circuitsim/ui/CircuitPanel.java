@@ -76,7 +76,7 @@ public class CircuitPanel extends JPanel {
     private boolean resizing;
     private int wireDragX;
     private int wireDragY;
-    private circuitsim.components.electrical.SlidingResistor draggingSliderResistor;
+    private circuitsim.components.electrical.VariableResistor draggingSliderResistor;
     private static final int RESIZE_HANDLE_SIZE = 10;
     private static final int MIN_COMPONENT_SIZE = 20;
     private static final int ROTATE_HANDLE_SIZE = 16;
@@ -180,8 +180,8 @@ public class CircuitPanel extends JPanel {
                     return;
                 }
                 if (SwingUtilities.isLeftMouseButton(e)) {
-                    circuitsim.components.electrical.SlidingResistor slider =
-                            findSlidingResistorHandleAt(worldX, worldY);
+                    circuitsim.components.electrical.VariableResistor slider =
+                            findVariableResistorHandleAt(worldX, worldY);
                     if (slider != null) {
                         draggingSliderResistor = slider;
                         selectComponent(slider);
@@ -328,11 +328,19 @@ public class CircuitPanel extends JPanel {
                 int worldX = toWorldX(e.getX());
                 int worldY = toWorldY(e.getY());
                 if (e.getClickCount() == 2) {
+                    CircuitComponent component = findComponentAtPoint(worldX, worldY);
+                    if (component instanceof circuitsim.components.electrical.LightBulb lightBulb
+                            && lightBulb.isBurnedOut()) {
+                        lightBulb.setBurnedOut(false);
+                        selectComponent(lightBulb);
+                        recordHistoryState();
+                        repaint();
+                        return;
+                    }
                     if (removeWireAt(worldX, worldY)) {
                         recordHistoryState();
                         repaint();
                     }
-                    CircuitComponent component = findComponentAtPoint(worldX, worldY);
                     if (component instanceof CustomComponent custom) {
                         CustomComponentDefinition definition = custom.getDefinition();
                         if (definition != null) {
@@ -2187,7 +2195,7 @@ public class CircuitPanel extends JPanel {
                 powerWatt = lightBulb.getRatedPowerWatt();
                 burnedOut = lightBulb.isBurnedOut();
             }
-            case circuitsim.components.electrical.SlidingResistor slider -> {
+            case circuitsim.components.electrical.VariableResistor slider -> {
                 resistance = slider.getResistance();
                 wiperPosition = slider.getWiperPosition();
             }
@@ -2315,7 +2323,7 @@ public class CircuitPanel extends JPanel {
                     lightBulb.setBurnedOut(state.getBurnedOut());
                 }
             }
-            case circuitsim.components.electrical.SlidingResistor slider -> {
+            case circuitsim.components.electrical.VariableResistor slider -> {
                 if (state.getResistance() != null) {
                     slider.setResistance(state.getResistance());
                 }
@@ -3451,9 +3459,9 @@ public class CircuitPanel extends JPanel {
         return false;
     }
 
-    private circuitsim.components.electrical.SlidingResistor findSlidingResistorHandleAt(int worldX, int worldY) {
+    private circuitsim.components.electrical.VariableResistor findVariableResistorHandleAt(int worldX, int worldY) {
         for (CircuitComponent component : components) {
-            if (component instanceof circuitsim.components.electrical.SlidingResistor slider
+            if (component instanceof circuitsim.components.electrical.VariableResistor slider
                     && slider.isSliderHandleHit(worldX, worldY)) {
                 return slider;
             }

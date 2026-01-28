@@ -15,17 +15,18 @@ import java.awt.Stroke;
 import java.awt.geom.Point2D;
 
 /**
- * 3-terminal sliding resistor (potentiometer).
+ * 3-terminal variable resistor (potentiometer).
  * Left/right are the fixed ends, top is the wiper terminal.
  */
-@BuiltinComponent(group = "Passive", paletteName = "Sliding Resistor", groupOrder = 30, paletteOrder = 40)
-public class SlidingResistor extends CircuitComponent {
+@BuiltinComponent(group = "Passive", paletteName = "Variable Resistor", aliases = { "SlidingResistor" },
+        groupOrder = 30, paletteOrder = 40)
+public class VariableResistor extends CircuitComponent {
     private static final int BASE_WIDTH = Grid.SIZE * 4;
     private static final int BASE_HEIGHT = Grid.SIZE * 2;
     private static final float DEFAULT_OHMS = 10f;
 
     private static final int SLIDER_HIT_RADIUS = 16;
-    private static final int HANDLE_GAP = Grid.SIZE / 4;
+    private static final int HANDLE_GAP = 0;
 
     private float resistance;
     private float wiperPosition = 0.5f; // 0..1
@@ -34,11 +35,11 @@ public class SlidingResistor extends CircuitComponent {
     private float computedAmpere;
     private float computedPowerWatt;
 
-    public SlidingResistor(int x, int y) {
+    public VariableResistor(int x, int y) {
         this(x, y, DEFAULT_OHMS);
     }
 
-    public SlidingResistor(int x, int y, float resistance) {
+    public VariableResistor(int x, int y, float resistance) {
         super(x, y, BASE_HEIGHT, BASE_WIDTH, 3);
         this.resistance = resistance;
         addConnectionPoint(0f, 0.5f);   // left
@@ -74,6 +75,7 @@ public class SlidingResistor extends CircuitComponent {
             return;
         }
         this.wiperPosition = Math.max(0f, Math.min(1f, wiperPosition));
+        snapWiperToGrid();
     }
 
     public float getComputedVoltage() {
@@ -103,6 +105,12 @@ public class SlidingResistor extends CircuitComponent {
     @Override
     public boolean allowFullRotation() {
         return true;
+    }
+
+    @Override
+    public void rotate90() {
+        super.rotate90();
+        snapWiperToGrid();
     }
 
     @Override
@@ -203,52 +211,55 @@ public class SlidingResistor extends CircuitComponent {
     }
 
     private java.awt.Point getWiperTerminalWorld() {
-        int unrotatedHeight = getUnrotatedHeight();
-        float offset = unrotatedHeight <= 0 ? 0f : (HANDLE_GAP / (float) unrotatedHeight);
-        return getDynamicPointWorld(wiperPosition, 0f - offset, true);
+        TrackFrame frame = getTrackFrameWorld();
+        if (frame == null) {
+            return null;
+        }
+        double t = Math.max(0.0, Math.min(1.0, wiperPosition));
+        double trackX = frame.left.x + (frame.ux * (t * frame.trackLength));
+        double trackY = frame.left.y + (frame.uy * (t * frame.trackLength));
+        double wx = trackX - (frame.nx * frame.halfThickness);
+        double wy = trackY - (frame.ny * frame.halfThickness);
+        return new java.awt.Point(Grid.snap((int) Math.round(wx)), Grid.snap((int) Math.round(wy)));
     }
 
     private java.awt.Point getSliderHandleWorld() {
-        // Handle lives on the opposite side of the wiper terminal (bottom edge of the component).
-        return getDynamicPointWorld(wiperPosition, 1f, true);
+        TrackFrame frame = getTrackFrameWorld();
+        if (frame == null) {
+            return null;
+        }
+        double t = Math.max(0.0, Math.min(1.0, wiperPosition));
+        double trackX = frame.left.x + (frame.ux * (t * frame.trackLength));
+        double trackY = frame.left.y + (frame.uy * (t * frame.trackLength));
+        double hx = trackX + (frame.nx * (frame.halfThickness + HANDLE_GAP));
+        double hy = trackY + (frame.ny * (frame.halfThickness + HANDLE_GAP));
+        return new java.awt.Point(Grid.snap((int) Math.round(hx)), Grid.snap((int) Math.round(hy)));
     }
 
-    private java.awt.Point getDynamicPointWorld(float relativeX, float relativeY, boolean snap) {
-        double centerX = x + (width / 2.0);
-        double centerY = y + (height / 2.0);
+    private TrackFrame getTrackFrameWorld() {
+        java.awt.Point left = getTerminalWorld(0);
+        java.awt.Point right = getTerminalWorld(1);
+        if (left == null || right == null) {
+            return null;
+        }
+        double dx = right.x - left.x;
+        double dy = right.y - left.y;
+        double length = Math.hypot(dx, dy);
+        if (length < 1e-6) {
+            return null;
+        }
+        double ux = dx / length;
+        double uy = dy / length;
+        double nx = -uy;
+        double ny = ux;
         int turns = getRotationQuarterTurns();
-        int unrotatedWidth = (turns % 2 != 0) ? height : width;
-        int unrotatedHeight = (turns % 2 != 0) ? width : height;
-        double unrotatedX = centerX - (unrotatedWidth / 2.0);
-        double unrotatedY = centerY - (unrotatedHeight / 2.0);
-        double localX = unrotatedX + (unrotatedWidth * relativeX);
-        double localY = unrotatedY + (unrotatedHeight * relativeY);
-        if (turns == 0) {
-            int px = (int) Math.round(localX);
-            int py = (int) Math.round(localY);
-            if (snap) {
-                px = Grid.snap(px);
-                py = Grid.snap(py);
-            }
-            return new java.awt.Point(px, py);
-        }
-        double angle = getRotationRadians();
-        double dx = localX - centerX;
-        double dy = localY - centerY;
-        double rotatedX = (dx * Math.cos(angle)) - (dy * Math.sin(angle));
-        double rotatedY = (dx * Math.sin(angle)) + (dy * Math.cos(angle));
-        int px = (int) Math.round(centerX + rotatedX);
-        int py = (int) Math.round(centerY + rotatedY);
-        if (snap) {
-            px = Grid.snap(px);
-            py = Grid.snap(py);
-        }
-        return new java.awt.Point(px, py);
+        int unrotatedThickness = (turns % 2 != 0) ? width : height;
+        double halfThickness = unrotatedThickness / 2.0;
+        return new TrackFrame(left, right, ux, uy, nx, ny, length, halfThickness);
     }
 
-    private int getUnrotatedHeight() {
-        int turns = getRotationQuarterTurns();
-        return (turns % 2 != 0) ? width : height;
+    private record TrackFrame(java.awt.Point left, java.awt.Point right, double ux, double uy, double nx, double ny,
+                              double trackLength, double halfThickness) {
     }
 
     @Override
@@ -312,17 +323,9 @@ public class SlidingResistor extends CircuitComponent {
         int ly = left.getY();
         int rx = right.getX();
         int ry = right.getY();
-        java.awt.Point wiperTerminalWorld = getWiperTerminalWorld();
-        java.awt.Point handleWorld = getSliderHandleWorld();
-        java.awt.Point wiperTerminalLocal = wiperTerminalWorld == null
-                ? new java.awt.Point(x + (width / 2), y)
-                : worldToLocalForDrawing(wiperTerminalWorld.x, wiperTerminalWorld.y);
-        TriangleWorld triangleWorld = getHandleTriangleWorld();
-        java.awt.Point handleLocal = triangleWorld == null
-                ? (handleWorld == null
-                    ? new java.awt.Point(x + (width / 2), y + height)
-                    : worldToLocalForDrawing(handleWorld.x, handleWorld.y))
-                : worldToLocalForDrawing(triangleWorld.tip.x, triangleWorld.tip.y);
+        int wiperX = x + Math.round(width * wiperPosition);
+        int wiperTerminalY = y;
+        int handleTipY = y + height;
 
         // Body between left/right: match the normal resistor zig-zag style.
         double dx = rx - lx;
@@ -402,7 +405,7 @@ public class SlidingResistor extends CircuitComponent {
             double tLen = Math.max(0.0, Math.min(1.0, wiperPosition)) * length;
             double baseX = lx + (thisGeometryUx * tLen);
             double baseY = ly + (thisGeometryUy * tLen);
-            Point2D.Double hit = intersectRayWithPolyline(wiperTerminalLocal.x, wiperTerminalLocal.y,
+            Point2D.Double hit = intersectRayWithPolyline(wiperX, wiperTerminalY,
                     baseX, baseY, zigPolyline);
             if (hit != null) {
                 contactX = hit.x;
@@ -417,21 +420,19 @@ public class SlidingResistor extends CircuitComponent {
         }
 
         // Wiper lead from top terminal down to slider
-        drawLeadWithPowerEffect(g2, wiperTerminalLocal.x, wiperTerminalLocal.y,
+        drawLeadWithPowerEffect(g2, wiperX, wiperTerminalY,
                 (int) Math.round(contactX), (int) Math.round(contactY));
 
         // Slider triangle handle outside the body:
         // flat side down, point up, with the point sitting on the component edge.
-        if (triangleWorld != null) {
-            java.awt.Point a = worldToLocalForDrawing(triangleWorld.tip.x, triangleWorld.tip.y);
-            java.awt.Point b = worldToLocalForDrawing(triangleWorld.baseLeft.x, triangleWorld.baseLeft.y);
-            java.awt.Point c = worldToLocalForDrawing(triangleWorld.baseRight.x, triangleWorld.baseRight.y);
-            Polygon poly = new Polygon();
-            poly.addPoint(a.x, a.y);
-            poly.addPoint(b.x, b.y);
-            poly.addPoint(c.x, c.y);
-            g2.fillPolygon(poly);
-        }
+        int triSize = Math.max(8, Math.min(width, height) / 3);
+        int half = triSize / 2;
+        int triHeight = Math.max(6, triSize);
+        Polygon poly = new Polygon();
+        poly.addPoint(wiperX, handleTipY);
+        poly.addPoint(wiperX - half, handleTipY + triHeight);
+        poly.addPoint(wiperX + half, handleTipY + triHeight);
+        g2.fillPolygon(poly);
         g2.setStroke(componentStroke);
     }
 
@@ -452,22 +453,6 @@ public class SlidingResistor extends CircuitComponent {
             return 0.0;
         }
         return amplitude * (index % 2 == 1 ? -1.0 : 1.0);
-    }
-
-    private java.awt.Point worldToLocalForDrawing(int worldX, int worldY) {
-        double centerX = x + (width / 2.0);
-        double centerY = y + (height / 2.0);
-        double angle = getRotationRadians();
-        if (angle == 0.0) {
-            return new java.awt.Point(worldX, worldY);
-        }
-        double dx = worldX - centerX;
-        double dy = worldY - centerY;
-        double cos = Math.cos(angle);
-        double sin = Math.sin(angle);
-        double localX = centerX + ((dx * cos) + (dy * sin));
-        double localY = centerY + ((-dx * sin) + (dy * cos));
-        return new java.awt.Point((int) Math.round(localX), (int) Math.round(localY));
     }
 
     private static Point2D.Double intersectRayWithPolyline(double rayX1, double rayY1, double towardX, double towardY,
@@ -545,26 +530,15 @@ public class SlidingResistor extends CircuitComponent {
     }
 
     private TriangleWorld getHandleTriangleWorld() {
-        java.awt.Point left = getTerminalWorld(0);
-        java.awt.Point right = getTerminalWorld(1);
+        TrackFrame frame = getTrackFrameWorld();
         java.awt.Point tip = getSliderHandleWorld();
-        if (left == null || right == null || tip == null) {
+        if (frame == null || tip == null) {
             return null;
         }
-        double trackX = left.x + ((right.x - left.x) * wiperPosition);
-        double trackY = left.y + ((right.y - left.y) * wiperPosition);
-        double dx = tip.x - trackX;
-        double dy = tip.y - trackY;
-        double len = Math.hypot(dx, dy);
-        if (len < 1e-6) {
-            dx = 0;
-            dy = 1;
-            len = 1;
-        }
-        double ux = dx / len;
-        double uy = dy / len;
-        double px = -uy;
-        double py = ux;
+        double ux = frame.nx;
+        double uy = frame.ny;
+        double px = frame.ux;
+        double py = frame.uy;
         int triSize = Math.max(8, Math.min(width, height) / 3);
         int half = triSize / 2;
         int triHeight = Math.max(6, triSize);

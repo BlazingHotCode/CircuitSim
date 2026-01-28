@@ -7,7 +7,9 @@ import circuitsim.components.properties.ComputedFloatProperty;
 import circuitsim.components.properties.FloatProperty;
 import circuitsim.ui.Colors;
 import circuitsim.ui.Grid;
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Composite;
 import java.awt.Graphics2D;
 
 /**
@@ -135,12 +137,41 @@ public class LightBulb extends TwoTerminalComponent {
         int left = cx - (size / 2);
         int top = cy - (size / 2);
 
-        boolean lit = !burnedOut && computedPowerWatt > Math.max(0.1f, ratedPowerWatt * 0.2f);
+        float rated = Math.max(0.001f, ratedPowerWatt);
+        float brightness = burnedOut ? 0f : (computedPowerWatt / rated);
+        brightness = Math.max(0f, Math.min(2f, brightness));
+        boolean lit = brightness > 0.05f;
         if (lit) {
-            g2.setColor(new Color(240, 200, 80));
-            int inset = Math.max(2, Math.round(size * 0.15f));
+            float intensity = Math.min(1f, brightness);
+            float over = Math.max(0f, brightness - 1f);
+            int glowR = 255;
+            int glowG = Math.min(255, Math.round(200 + (55 * over)));
+            int glowB = Math.min(255, Math.round(90 + (140 * over)));
+            Color glowColor = new Color(glowR, glowG, glowB);
+            Composite originalComposite = g2.getComposite();
             int glowLift = Math.max(1, Math.round(size * 0.08f));
+
+            // Outer soft glow.
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                    Math.max(0f, Math.min(1f, 0.08f + (0.18f * intensity)))));
+            g2.setColor(glowColor);
+            int outerInset = Math.max(1, Math.round(size * (0.05f - (0.02f * intensity))));
+            g2.fillOval(left + outerInset, top + outerInset - glowLift, size - outerInset * 2, size - outerInset * 2);
+
+            // Inner glow.
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                    Math.max(0f, Math.min(1f, 0.14f + (0.30f * intensity)))));
+            int inset = Math.max(2, Math.round(size * 0.15f));
             g2.fillOval(left + inset, top + inset - glowLift, size - inset * 2, size - inset * 2);
+
+            // Core brightness.
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                    Math.max(0f, Math.min(1f, 0.10f + (0.35f * intensity)))));
+            int coreInset = Math.max(inset + 1, Math.round(size * 0.26f));
+            g2.fillOval(left + coreInset, top + coreInset - glowLift,
+                    size - coreInset * 2, size - coreInset * 2);
+
+            g2.setComposite(originalComposite);
         }
 
         g2.setColor(Colors.COMPONENT_STROKE);
@@ -173,10 +204,14 @@ public class LightBulb extends TwoTerminalComponent {
         int peakY = bulbTop + filamentPadY + Math.max(2, bulbHeight / 5);
         int fx2 = (fx1 + midX) / 2;
         int fx3 = (midX + fx4) / 2;
+        if (lit) {
+            g2.setColor(new Color(235, 170, 70));
+        }
         g2.drawLine(fx1, fy, fx2, peakY);
         g2.drawLine(fx2, peakY, midX, fy);
         g2.drawLine(midX, fy, fx3, peakY);
         g2.drawLine(fx3, peakY, fx4, fy);
+        g2.setColor(Colors.COMPONENT_STROKE);
 
         // Burned-out indicator: small crack "X" on the glass
         if (burnedOut) {
