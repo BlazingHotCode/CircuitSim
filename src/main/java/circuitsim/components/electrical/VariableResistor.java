@@ -6,6 +6,7 @@ import circuitsim.components.core.ConnectionPoint;
 import circuitsim.components.properties.ComputedFloatProperty;
 import circuitsim.components.properties.FloatProperty;
 import circuitsim.ui.Colors;
+import circuitsim.ui.Geometry2D;
 import circuitsim.ui.Grid;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -152,7 +153,7 @@ public class VariableResistor extends CircuitComponent {
             return true;
         }
         // Allow grabbing the wiper lead as well.
-        return distancePointToSegmentSquared(worldX, worldY,
+        return Geometry2D.distancePointToSegmentSquared(worldX, worldY,
                 geometry.topTerminal.x, geometry.topTerminal.y,
                 geometry.trackPoint.x, geometry.trackPoint.y) <= (SLIDER_HIT_RADIUS * SLIDER_HIT_RADIUS);
     }
@@ -282,31 +283,6 @@ public class VariableResistor extends CircuitComponent {
         return super.getConnectionPointWorldY(point);
     }
 
-    private static int distancePointToSegmentSquared(int px, int py, int ax, int ay, int bx, int by) {
-        long abx = (long) bx - ax;
-        long aby = (long) by - ay;
-        long apx = (long) px - ax;
-        long apy = (long) py - ay;
-        long denom = (abx * abx) + (aby * aby);
-        if (denom <= 0) {
-            long dx = (long) px - ax;
-            long dy = (long) py - ay;
-            return (int) Math.min(Integer.MAX_VALUE, (dx * dx) + (dy * dy));
-        }
-        double t = ((double) (apx * abx) + (double) (apy * aby)) / (double) denom;
-        if (t < 0) {
-            t = 0;
-        } else if (t > 1) {
-            t = 1;
-        }
-        double cx = ax + (abx * t);
-        double cy = ay + (aby * t);
-        double dx = px - cx;
-        double dy = py - cy;
-        double d2 = (dx * dx) + (dy * dy);
-        return (int) Math.min(Integer.MAX_VALUE, Math.round(d2));
-    }
-
     @Override
     protected void drawComponent(Graphics2D g2) {
         Stroke componentStroke = g2.getStroke();
@@ -413,7 +389,7 @@ public class VariableResistor extends CircuitComponent {
             double tLen = Math.max(0.0, Math.min(1.0, wiperPosition)) * length;
             double baseX = lx + (thisGeometryUx * tLen);
             double baseY = ly + (thisGeometryUy * tLen);
-            Point2D.Double hit = intersectRayWithPolyline(wiperX, wiperTerminalY,
+            Point2D.Double hit = Geometry2D.intersectRayWithPolyline(wiperX, wiperTerminalY,
                     baseX, baseY, zigPolyline);
             if (hit != null) {
                 contactX = hit.x;
@@ -463,62 +439,6 @@ public class VariableResistor extends CircuitComponent {
         return amplitude * (index % 2 == 1 ? -1.0 : 1.0);
     }
 
-    private static Point2D.Double intersectRayWithPolyline(double rayX1, double rayY1, double towardX, double towardY,
-            java.util.List<Point2D.Double> polyline) {
-        if (polyline == null || polyline.size() < 2) {
-            return null;
-        }
-        double dirX = towardX - rayX1;
-        double dirY = towardY - rayY1;
-        double len = Math.hypot(dirX, dirY);
-        if (len < 1e-9) {
-            return null;
-        }
-        dirX /= len;
-        dirY /= len;
-        double rayX2 = rayX1 + (dirX * 10000.0);
-        double rayY2 = rayY1 + (dirY * 10000.0);
-
-        Point2D.Double best = null;
-        double bestT = Double.POSITIVE_INFINITY;
-        for (int i = 0; i < polyline.size() - 1; i++) {
-            Point2D.Double a = polyline.get(i);
-            Point2D.Double b = polyline.get(i + 1);
-            Intersection hit = segmentIntersection(rayX1, rayY1, rayX2, rayY2, a.x, a.y, b.x, b.y);
-            if (hit == null) {
-                continue;
-            }
-            if (hit.t >= 0.0 && hit.t < bestT) {
-                bestT = hit.t;
-                best = new Point2D.Double(hit.x, hit.y);
-            }
-        }
-        return best;
-    }
-
-    private static Intersection segmentIntersection(double ax, double ay, double bx, double by,
-            double cx, double cy, double dx, double dy) {
-        double rX = bx - ax;
-        double rY = by - ay;
-        double sX = dx - cx;
-        double sY = dy - cy;
-        double denom = (rX * sY) - (rY * sX);
-        if (Math.abs(denom) < 1e-9) {
-            return null;
-        }
-        double qpx = cx - ax;
-        double qpy = cy - ay;
-        double t = ((qpx * sY) - (qpy * sX)) / denom;
-        double u = ((qpx * rY) - (qpy * rX)) / denom;
-        if (t < 0.0 || t > 1.0 || u < 0.0 || u > 1.0) {
-            return null;
-        }
-        return new Intersection(ax + (t * rX), ay + (t * rY), t);
-    }
-
-    private record Intersection(double x, double y, double t) {
-    }
-
     private void drawLeadWithPowerEffect(Graphics2D g2, int x1, int y1, int x2, int y2) {
         Color originalColor = g2.getColor();
         Stroke originalStroke = g2.getStroke();
@@ -561,21 +481,10 @@ public class VariableResistor extends CircuitComponent {
 
     private record TriangleWorld(java.awt.Point tip, java.awt.Point baseLeft, java.awt.Point baseRight) {
         boolean contains(int x, int y) {
-            // Barycentric technique.
-            double x1 = tip.x;
-            double y1 = tip.y;
-            double x2 = baseLeft.x;
-            double y2 = baseLeft.y;
-            double x3 = baseRight.x;
-            double y3 = baseRight.y;
-            double denom = ((y2 - y3) * (x1 - x3)) + ((x3 - x2) * (y1 - y3));
-            if (Math.abs(denom) < 1e-9) {
-                return false;
-            }
-            double a = (((y2 - y3) * (x - x3)) + ((x3 - x2) * (y - y3))) / denom;
-            double b = (((y3 - y1) * (x - x3)) + ((x1 - x3) * (y - y3))) / denom;
-            double c = 1.0 - a - b;
-            return a >= 0 && b >= 0 && c >= 0;
+            return Geometry2D.pointInTriangle(x, y,
+                    tip.x, tip.y,
+                    baseLeft.x, baseLeft.y,
+                    baseRight.x, baseRight.y);
         }
     }
 }

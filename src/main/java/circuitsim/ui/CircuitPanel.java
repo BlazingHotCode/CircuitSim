@@ -16,6 +16,7 @@ import circuitsim.custom.CustomComponentDefinition;
 import circuitsim.io.BoardState;
 import circuitsim.io.BoardStateIO;
 import circuitsim.physics.CircuitPhysics;
+import circuitsim.ui.Geometry2D;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -2545,7 +2546,8 @@ public class CircuitPanel extends JPanel {
         }
         List<RenderWire> renderWires = lastRenderWires.isEmpty() ? buildRenderWires() : lastRenderWires;
         for (RenderWire renderWire : renderWires) {
-            if (distanceToSegment(mouseX, mouseY, renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2)
+            if (Geometry2D.distancePointToSegment(mouseX, mouseY,
+                    renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2)
                     <= maxDistance) {
                 return new WireHit(renderWire.wire);
             }
@@ -2701,7 +2703,8 @@ public class CircuitPanel extends JPanel {
                     || (dxEnd * dxEnd) + (dyEnd * dyEnd) <= endpointRadiusSq) {
                 continue;
             }
-            if (distanceToSegment(x, y, start.getX(), start.getY(), end.getX(), end.getY()) <= maxDistance) {
+            if (Geometry2D.distancePointToSegment(x, y, start.getX(), start.getY(), end.getX(), end.getY())
+                    <= maxDistance) {
                 return wire;
             }
         }
@@ -2827,22 +2830,6 @@ public class CircuitPanel extends JPanel {
             this.y = y;
             this.angle = angle;
         }
-    }
-
-    /**
-     * Computes distance from a point to a line segment.
-     */
-    private double distanceToSegment(int px, int py, int x1, int y1, int x2, int y2) {
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        if (dx == 0 && dy == 0) {
-            return Math.hypot(px - x1, py - y1);
-        }
-        double t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
-        t = Math.max(0, Math.min(1, t));
-        double projX = x1 + (t * dx);
-        double projY = y1 + (t * dy);
-        return Math.hypot(px - projX, py - projY);
     }
 
     /**
