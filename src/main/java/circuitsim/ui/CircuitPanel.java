@@ -50,59 +50,59 @@ import javax.swing.SwingUtilities;
  * Main canvas for circuit editing, rendering, and interaction.
  */
 public class CircuitPanel extends JPanel {
-    private final List<CircuitComponent> components = new ArrayList<>();
+    final List<CircuitComponent> components = new ArrayList<>();
     private final ComponentPropertiesPanel propertiesPanel;
     private final List<Wire> wires = new ArrayList<>();
-    private final List<CircuitComponent> selectedComponents = new ArrayList<>();
-    private final List<Wire> selectedWires = new ArrayList<>();
+    final List<CircuitComponent> selectedComponents = new ArrayList<>();
+    final List<Wire> selectedWires = new ArrayList<>();
     private final Map<CircuitComponent, Integer> selectionBaseRotations = new HashMap<>();
     private final ShortCircuitPopup shortCircuitPopup = new ShortCircuitPopup();
     private boolean lastShortCircuit = false;
-    private CircuitComponent draggedComponent;
-    private CircuitComponent selectedComponent;
+    CircuitComponent draggedComponent;
+    CircuitComponent selectedComponent;
     private Wire selectedWire;
-    private WireNode newWireStartNode;
-    private boolean creatingWire;
-    private boolean lockedWire;
-    private Wire draggingWire;
-    private int wireStartAX;
-    private int wireStartAY;
-    private int wireStartBX;
-    private int wireStartBY;
-    private int wireDragStartX;
-    private int wireDragStartY;
-    private int dragOffsetX;
-    private int dragOffsetY;
-    private boolean resizing;
-    private int wireDragX;
-    private int wireDragY;
-    private circuitsim.components.electrical.VariableResistor draggingSliderResistor;
+    WireNode newWireStartNode;
+    boolean creatingWire;
+    boolean lockedWire;
+    Wire draggingWire;
+    int wireStartAX;
+    int wireStartAY;
+    int wireStartBX;
+    int wireStartBY;
+    int wireDragStartX;
+    int wireDragStartY;
+    int dragOffsetX;
+    int dragOffsetY;
+    boolean resizing;
+    int wireDragX;
+    int wireDragY;
+    circuitsim.components.electrical.VariableResistor draggingSliderResistor;
     private static final int RESIZE_HANDLE_SIZE = 10;
-    private static final int MIN_COMPONENT_SIZE = 20;
+    static final int MIN_COMPONENT_SIZE = 20;
     private static final int ROTATE_HANDLE_SIZE = 16;
     private static final int WIRE_ENDPOINT_RADIUS = 8;
-    private boolean selectingArea;
-    private int selectionStartX;
-    private int selectionStartY;
-    private int selectionEndX;
-    private int selectionEndY;
-    private boolean draggingSelection;
-    private int selectionDragStartX;
-    private int selectionDragStartY;
+    boolean selectingArea;
+    int selectionStartX;
+    int selectionStartY;
+    int selectionEndX;
+    int selectionEndY;
+    boolean draggingSelection;
+    int selectionDragStartX;
+    int selectionDragStartY;
     private int selectionRotationTurns;
     private WireColor activeWireColor = WireColor.WHITE;
     private List<RenderWire> lastRenderWires = new ArrayList<>();
     private static final int WIRE_OFFSET_STEP = 6;
     private static final int CROSSING_RADIUS = 7;
-    private Wire pendingWireStartAnchor;
-    private int viewOffsetX;
-    private int viewOffsetY;
-    private boolean panningView;
-    private int panStartX;
-    private int panStartY;
-    private int panOriginOffsetX;
-    private int panOriginOffsetY;
-    private boolean panMoved;
+    Wire pendingWireStartAnchor;
+    int viewOffsetX;
+    int viewOffsetY;
+    boolean panningView;
+    int panStartX;
+    int panStartY;
+    int panOriginOffsetX;
+    int panOriginOffsetY;
+    boolean panMoved;
     private int lastMouseWorldX;
     private int lastMouseWorldY;
     private boolean hasLastMouseWorld;
@@ -127,12 +127,12 @@ public class CircuitPanel extends JPanel {
     private Runnable createCustomComponentAction = () -> {};
     private java.util.function.Consumer<String> editCustomComponentAction = id -> {};
     private java.util.function.Consumer<String> deleteCustomComponentAction = id -> {};
-    private ComponentRegistry.Entry placementEntry;
+    ComponentRegistry.Entry placementEntry;
     private CircuitComponent placementPreview;
     private Integer placementX;
     private Integer placementY;
-    private boolean draggingWithoutWires;
-    private boolean detachedWiresForShiftDrag;
+    boolean draggingWithoutWires;
+    boolean detachedWiresForShiftDrag;
     private final CoordinatesOverlay coordinatesOverlay = new CoordinatesOverlay();
 
     /**
@@ -184,384 +184,6 @@ public class CircuitPanel extends JPanel {
         }
         if (history.isHistoryEmpty()) {
             recordHistoryState();
-        }
-    }
-
-    void handleMousePressed(MouseEvent e) {
-        requestFocusInWindow();
-        updateLastMouseWorld(e.getX(), e.getY());
-        boolean toggleSelection = e.isControlDown();
-        if (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger()) {
-            panningView = true;
-            panStartX = e.getX();
-            panStartY = e.getY();
-            panOriginOffsetX = viewOffsetX;
-            panOriginOffsetY = viewOffsetY;
-            panMoved = false;
-            return;
-        }
-        int worldX = toWorldX(e.getX());
-        int worldY = toWorldY(e.getY());
-        if (placementEntry != null && SwingUtilities.isLeftMouseButton(e)) {
-            placeActiveComponentAt(worldX, worldY);
-            return;
-        }
-        if (SwingUtilities.isLeftMouseButton(e)) {
-            circuitsim.components.electrical.VariableResistor slider =
-                    findVariableResistorHandleAt(worldX, worldY);
-            if (slider != null) {
-                draggingSliderResistor = slider;
-                selectComponent(slider);
-                slider.setWiperFromWorld(worldX, worldY);
-                updateAttachedWireNodes(slider);
-                repaint();
-                return;
-            }
-        }
-        if (creatingWire && lockedWire) {
-            int endX = Grid.snap(worldX);
-            int endY = Grid.snap(worldY);
-            WireEndpointHit endHit = findWireEndpointAt(endX, endY);
-            finalizeWire(endX, endY, endHit == null ? null : endHit.wire);
-            creatingWire = false;
-            lockedWire = false;
-            newWireStartNode = null;
-            pendingWireStartAnchor = null;
-            repaint();
-            return;
-        }
-        if (!creatingWire && SwingUtilities.isLeftMouseButton(e)) {
-            // Let normal component selection/drag flow handle inputs/sources.
-        }
-        ConnectionPoint hitPoint = findConnectionPointAt(worldX, worldY);
-        if (hitPoint != null) {
-            if (toggleSelection) {
-                toggleComponentSelection(hitPoint.getOwner());
-                repaint();
-                return;
-            }
-            selectComponent(hitPoint.getOwner());
-            int startX = selectedComponent.getConnectionPointWorldX(hitPoint);
-            int startY = selectedComponent.getConnectionPointWorldY(hitPoint);
-            newWireStartNode = getOrCreateNodeAt(startX, startY);
-            attachWireNodeToConnectionPoint(newWireStartNode, hitPoint);
-            creatingWire = true;
-            lockedWire = e.isShiftDown();
-            pendingWireStartAnchor = null;
-            wireDragX = startX;
-            wireDragY = startY;
-            repaint();
-            return;
-        }
-        WireEndpointHit endpointHit = findWireEndpointAt(worldX, worldY);
-        if (endpointHit != null) {
-            if (toggleSelection) {
-                toggleWireSelection(endpointHit.wire);
-                repaint();
-                return;
-            }
-            newWireStartNode = endpointHit.node;
-            creatingWire = true;
-            lockedWire = e.isShiftDown();
-            selectWire(endpointHit.wire);
-            pendingWireStartAnchor = endpointHit.wire;
-            wireDragX = newWireStartNode.getX();
-            wireDragY = newWireStartNode.getY();
-            repaint();
-            return;
-        }
-        WireHit wireHit = findWireAt(worldX, worldY);
-        if (wireHit != null) {
-            if (toggleSelection) {
-                toggleWireSelection(wireHit.wire);
-                repaint();
-                return;
-            }
-            if (isMultiSelection() && selectedWires.contains(wireHit.wire)) {
-                beginSelectionDrag(worldX, worldY);
-                return;
-            }
-            draggingWire = wireHit.wire;
-            selectWire(wireHit.wire);
-            wireDragStartX = Grid.snap(worldX);
-            wireDragStartY = Grid.snap(worldY);
-            wireStartAX = draggingWire.getStart().getX();
-            wireStartAY = draggingWire.getStart().getY();
-            wireStartBX = draggingWire.getEnd().getX();
-            wireStartBY = draggingWire.getEnd().getY();
-            detachSharedEndpoints(draggingWire);
-            repaint();
-            return;
-        }
-        for (int i = components.size() - 1; i >= 0; i--) {
-            CircuitComponent component = components.get(i);
-            if (component.contains(worldX, worldY)) {
-                if (toggleSelection) {
-                    toggleComponentSelection(component);
-                    repaint();
-                    return;
-                }
-                if (isMultiSelection() && selectedComponents.contains(component)) {
-                    beginSelectionDrag(worldX, worldY);
-                    return;
-                }
-                selectComponent(component);
-                if (isInRotateHandle(component, worldX, worldY)) {
-                    rotateSelectionGroup();
-                    repaint();
-                    return;
-                }
-                draggedComponent = component;
-                draggingWithoutWires = e.isShiftDown();
-                detachedWiresForShiftDrag = false;
-                attachWireNodesAtComponent(component);
-                updateAttachedWireNodes(component);
-                resizing = isInResizeHandle(component, worldX, worldY);
-                if (!resizing) {
-                    dragOffsetX = worldX - component.getX();
-                    dragOffsetY = worldY - component.getY();
-                }
-                components.remove(i);
-                components.add(component);
-                repaint();
-                return;
-            }
-        }
-        if (!isMultiSelection() && selectedComponent != null
-                && isInRotateHandle(selectedComponent, worldX, worldY)) {
-            rotateSelectionGroup();
-            repaint();
-            return;
-        }
-        if (toggleSelection) {
-            return;
-        }
-        clearSelection();
-        draggedComponent = null;
-        resizing = false;
-        selectingArea = true;
-        selectionStartX = worldX;
-        selectionStartY = worldY;
-        selectionEndX = worldX;
-        selectionEndY = worldY;
-        repaint();
-    }
-
-    void handleMouseClicked(MouseEvent e) {
-        int worldX = toWorldX(e.getX());
-        int worldY = toWorldY(e.getY());
-        if (e.getClickCount() == 2) {
-            CircuitComponent component = findComponentAtPoint(worldX, worldY);
-            if (component instanceof circuitsim.components.electrical.LightBulb lightBulb
-                    && lightBulb.isBurnedOut()) {
-                lightBulb.setBurnedOut(false);
-                selectComponent(lightBulb);
-                recordHistoryState();
-                repaint();
-                return;
-            }
-            if (removeWireAt(worldX, worldY)) {
-                recordHistoryState();
-                repaint();
-            }
-            if (component instanceof CustomComponent custom) {
-                CustomComponentDefinition definition = custom.getDefinition();
-                if (definition != null) {
-                    requestEditCustomComponent(definition.getId());
-                }
-            }
-            return;
-        }
-        if (e.getClickCount() == 1 && SwingUtilities.isLeftMouseButton(e)) {
-            if (creatingWire || draggingWire != null || draggedComponent != null || resizing) {
-                return;
-            }
-            CircuitComponent component = findComponentAtPoint(worldX, worldY);
-            if (component instanceof Switch toggle) {
-                toggle.toggle();
-                recordHistoryState();
-                repaint();
-            } else if (component instanceof CustomInputPort inputPort
-                    && findConnectionPointAt(worldX, worldY) == null) {
-                inputPort.setActive(!inputPort.isActive());
-                selectComponent(inputPort);
-                recordHistoryState();
-                repaint();
-            } else if (component instanceof circuitsim.components.electrical.Source source
-                    && findConnectionPointAt(worldX, worldY) == null) {
-                source.setActive(!source.isActive());
-                selectComponent(source);
-                recordHistoryState();
-                repaint();
-            }
-        }
-    }
-
-    void handleMouseDragged(MouseEvent e) {
-        updateLastMouseWorld(e.getX(), e.getY());
-        if (draggingSliderResistor != null) {
-            int worldX = toWorldX(e.getX());
-            int worldY = toWorldY(e.getY());
-            draggingSliderResistor.setWiperFromWorld(worldX, worldY);
-            updateAttachedWireNodes(draggingSliderResistor);
-            repaint();
-            return;
-        }
-        if (!panningView && SwingUtilities.isRightMouseButton(e)) {
-            panningView = true;
-            panStartX = e.getX();
-            panStartY = e.getY();
-            panOriginOffsetX = viewOffsetX;
-            panOriginOffsetY = viewOffsetY;
-            panMoved = false;
-            selectingArea = false;
-            draggingSelection = false;
-            draggedComponent = null;
-            draggingWire = null;
-            resizing = false;
-            if (creatingWire && !lockedWire) {
-                creatingWire = false;
-                newWireStartNode = null;
-                pendingWireStartAnchor = null;
-            }
-        }
-        if (panningView) {
-            int dx = e.getX() - panStartX;
-            int dy = e.getY() - panStartY;
-            viewOffsetX = panOriginOffsetX + dx;
-            viewOffsetY = panOriginOffsetY + dy;
-            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-                panMoved = true;
-            }
-            repaint();
-            return;
-        }
-        int worldX = toWorldX(e.getX());
-        int worldY = toWorldY(e.getY());
-        if (selectingArea) {
-            selectionEndX = worldX;
-            selectionEndY = worldY;
-            repaint();
-            return;
-        }
-        if (draggingSelection) {
-            dragSelectionTo(worldX, worldY);
-            return;
-        }
-        if (creatingWire) {
-            wireDragX = Grid.snap(worldX);
-            wireDragY = Grid.snap(worldY);
-            repaint();
-            return;
-        }
-        if (draggingWire != null) {
-            int dx = Grid.snap(worldX) - wireDragStartX;
-            int dy = Grid.snap(worldY) - wireDragStartY;
-            draggingWire.getStart().setPosition(wireStartAX + dx, wireStartAY + dy);
-            draggingWire.getEnd().setPosition(wireStartBX + dx, wireStartBY + dy);
-            repaint();
-            return;
-        }
-        if (draggedComponent != null) {
-            if (resizing) {
-                int targetWidth = Math.max(MIN_COMPONENT_SIZE,
-                        Grid.snap(worldX) - draggedComponent.getX());
-                int targetHeight = Math.max(MIN_COMPONENT_SIZE,
-                        Grid.snap(worldY) - draggedComponent.getY());
-                draggedComponent.resizeKeepingRatio(targetWidth, targetHeight);
-                int snappedWidth = Grid.snapSize(draggedComponent.getWidth());
-                int snappedHeight = Grid.snapSize(draggedComponent.getHeight());
-                draggedComponent.setSize(snappedWidth, snappedHeight);
-            } else {
-                int snappedX = Grid.snap(worldX - dragOffsetX);
-                int snappedY = Grid.snap(worldY - dragOffsetY);
-                if (draggingWithoutWires && !detachedWiresForShiftDrag) {
-                    detachWireAttachments(draggedComponent);
-                    detachedWiresForShiftDrag = true;
-                }
-                draggedComponent.setPosition(snappedX, snappedY);
-            }
-            if (!draggingWithoutWires) {
-                updateAttachedWireNodes(draggedComponent);
-            }
-            repaint();
-        }
-    }
-
-    void handleMouseReleased(MouseEvent e) {
-        int worldX = toWorldX(e.getX());
-        int worldY = toWorldY(e.getY());
-        boolean didChange = false;
-        if (draggingSliderResistor != null) {
-            draggingSliderResistor.setWiperFromWorld(worldX, worldY);
-            updateAttachedWireNodes(draggingSliderResistor);
-            draggingSliderResistor = null;
-            recordHistoryState();
-            repaint();
-            return;
-        }
-        if (panningView) {
-            panningView = false;
-            if (!panMoved && (SwingUtilities.isRightMouseButton(e) || e.isPopupTrigger())) {
-                showContextMenu(e, worldX, worldY);
-            }
-            return;
-        }
-        if (lockedWire) {
-            return;
-        }
-        if (selectingArea) {
-            selectingArea = false;
-            selectionEndX = worldX;
-            selectionEndY = worldY;
-            updateSelectionFromArea();
-            repaint();
-            return;
-        }
-        if (draggingSelection) {
-            draggingSelection = false;
-            repaint();
-            return;
-        }
-        if (creatingWire) {
-            int endX = Grid.snap(worldX);
-            int endY = Grid.snap(worldY);
-            WireEndpointHit endHit = findWireEndpointAt(endX, endY);
-            finalizeWire(endX, endY, endHit == null ? null : endHit.wire);
-            creatingWire = false;
-            newWireStartNode = null;
-            pendingWireStartAnchor = null;
-            repaint();
-            return;
-        }
-        if (draggingWire != null) {
-            draggingWire = null;
-            repaint();
-            return;
-        }
-        if (draggedComponent != null) {
-            didChange = true;
-        }
-        draggedComponent = null;
-        resizing = false;
-        draggingWithoutWires = false;
-        detachedWiresForShiftDrag = false;
-        if (didChange) {
-            recordHistoryState();
-        }
-    }
-
-    void handleMouseMoved(MouseEvent e) {
-        updateLastMouseWorld(e.getX(), e.getY());
-        if (placementEntry != null) {
-            updatePlacementAtScreen(e.getX(), e.getY());
-        }
-        if (creatingWire) {
-            int worldX = toWorldX(e.getX());
-            int worldY = toWorldY(e.getY());
-            wireDragX = Grid.snap(worldX);
-            wireDragY = Grid.snap(worldY);
-            repaint();
         }
     }
 
@@ -692,7 +314,7 @@ public class CircuitPanel extends JPanel {
     /**
      * @return true if the mouse is over the resize handle for the component
      */
-    private boolean isInResizeHandle(CircuitComponent component, int mouseX, int mouseY) {
+    boolean isInResizeHandle(CircuitComponent component, int mouseX, int mouseY) {
         java.awt.Rectangle bounds = component.getBounds();
         int handleX = bounds.x + bounds.width - RESIZE_HANDLE_SIZE;
         int handleY = bounds.y + bounds.height - RESIZE_HANDLE_SIZE;
@@ -703,7 +325,7 @@ public class CircuitPanel extends JPanel {
     /**
      * @return true if the mouse is over the rotate handle for the component
      */
-    private boolean isInRotateHandle(CircuitComponent component, int mouseX, int mouseY) {
+    boolean isInRotateHandle(CircuitComponent component, int mouseX, int mouseY) {
         java.awt.Rectangle bounds = component.getBounds();
         int handleX = bounds.x + bounds.width - ROTATE_HANDLE_SIZE;
         int handleY = bounds.y - ROTATE_HANDLE_SIZE;
@@ -807,7 +429,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Shows a context menu based on what is under the cursor.
      */
-    private void showContextMenu(MouseEvent e, int worldX, int worldY) {
+    void showContextMenu(MouseEvent e, int worldX, int worldY) {
         WireHit wireHit = findWireAt(worldX, worldY);
         if (wireHit != null) {
             selectWire(wireHit.wire);
@@ -936,13 +558,13 @@ public class CircuitPanel extends JPanel {
     /**
      * Stores the latest mouse position in world coordinates for palette placement.
      */
-    private void updateLastMouseWorld(int screenX, int screenY) {
+    void updateLastMouseWorld(int screenX, int screenY) {
         lastMouseWorldX = toWorldX(screenX);
         lastMouseWorldY = toWorldY(screenY);
         hasLastMouseWorld = true;
     }
 
-    private void updatePlacementAtScreen(int screenX, int screenY) {
+    void updatePlacementAtScreen(int screenX, int screenY) {
         if (placementEntry == null) {
             return;
         }
@@ -951,7 +573,7 @@ public class CircuitPanel extends JPanel {
         repaint();
     }
 
-    private void placeActiveComponentAt(int worldX, int worldY) {
+    void placeActiveComponentAt(int worldX, int worldY) {
         if (placementEntry == null) {
             return;
         }
@@ -1144,7 +766,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Finds the topmost component at the provided point.
      */
-    private CircuitComponent findComponentAtPoint(int mouseX, int mouseY) {
+    CircuitComponent findComponentAtPoint(int mouseX, int mouseY) {
         for (int i = components.size() - 1; i >= 0; i--) {
             CircuitComponent component = components.get(i);
             if (component.contains(mouseX, mouseY)) {
@@ -1157,7 +779,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Removes a wire at the given point, if any.
      */
-    private boolean removeWireAt(int mouseX, int mouseY) {
+    boolean removeWireAt(int mouseX, int mouseY) {
         WireHit hit = findWireAt(mouseX, mouseY);
         if (hit == null) {
             return false;
@@ -1435,7 +1057,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Selects a single component and clears other selections.
      */
-    private void selectComponent(CircuitComponent component) {
+    void selectComponent(CircuitComponent component) {
         selectedComponents.clear();
         selectedWires.clear();
         if (component != null) {
@@ -1450,7 +1072,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Selects a single wire and clears other selections.
      */
-    private void selectWire(Wire wire) {
+    void selectWire(Wire wire) {
         selectedComponents.clear();
         selectedWires.clear();
         if (wire != null) {
@@ -1483,7 +1105,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Toggles component selection in multi-select mode.
      */
-    private void toggleComponentSelection(CircuitComponent component) {
+    void toggleComponentSelection(CircuitComponent component) {
         if (component == null) {
             return;
         }
@@ -1506,7 +1128,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Toggles wire selection in multi-select mode.
      */
-    private void toggleWireSelection(Wire wire) {
+    void toggleWireSelection(Wire wire) {
         if (wire == null) {
             return;
         }
@@ -1529,7 +1151,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Clears all selection state.
      */
-    private void clearSelection() {
+    void clearSelection() {
         selectedComponents.clear();
         selectedWires.clear();
         selectedComponent = null;
@@ -1557,14 +1179,14 @@ public class CircuitPanel extends JPanel {
     /**
      * @return true if more than one item is selected
      */
-    private boolean isMultiSelection() {
+    boolean isMultiSelection() {
         return selectedComponents.size() + selectedWires.size() > 1;
     }
 
     /**
      * Begins dragging a multi-selection.
      */
-    private void beginSelectionDrag(int worldX, int worldY) {
+    void beginSelectionDrag(int worldX, int worldY) {
         draggingSelection = true;
         selectionDragStartX = Grid.snap(worldX);
         selectionDragStartY = Grid.snap(worldY);
@@ -1579,7 +1201,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Drags the selection to a new snapped position.
      */
-    private void dragSelectionTo(int mouseX, int mouseY) {
+    void dragSelectionTo(int mouseX, int mouseY) {
         int snappedX = Grid.snap(mouseX);
         int snappedY = Grid.snap(mouseY);
         int dx = snappedX - selectionDragStartX;
@@ -1611,7 +1233,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Rotates the entire selection around its bounding box center.
      */
-    private void rotateSelectionGroup() {
+    void rotateSelectionGroup() {
         if (selectedComponents.isEmpty() && selectedWires.isEmpty()) {
             return;
         }
@@ -1761,7 +1383,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Creates and adds a new wire once the user completes placement.
      */
-    private void finalizeWire(int endX, int endY, Wire endAnchorWire) {
+    void finalizeWire(int endX, int endY, Wire endAnchorWire) {
         WireSplitResult splitResult = splitWireAt(endX, endY);
         WireNode endNode = splitResult == null ? getOrCreateNodeAt(endX, endY) : splitResult.node;
         Wire resolvedEndAnchor = splitResult == null ? endAnchorWire : splitResult.anchorWire;
@@ -2130,7 +1752,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Captures the current state for undo history and autosave.
      */
-    private void recordHistoryState() {
+    void recordHistoryState() {
         if (applyingState) {
             return;
         }
@@ -2194,21 +1816,21 @@ public class CircuitPanel extends JPanel {
     /**
      * Converts a screen X coordinate to world space.
      */
-    private int toWorldX(int screenX) {
+    int toWorldX(int screenX) {
         return (int) Math.round((screenX - viewOffsetX) / zoomFactor);
     }
 
     /**
      * Converts a screen Y coordinate to world space.
      */
-    private int toWorldY(int screenY) {
+    int toWorldY(int screenY) {
         return (int) Math.round((screenY - viewOffsetY) / zoomFactor);
     }
 
     /**
      * Finds a wire near the provided point.
      */
-    private WireHit findWireAt(int mouseX, int mouseY) {
+    WireHit findWireAt(int mouseX, int mouseY) {
         double maxDistance = 6.0;
         if (wires.isEmpty()) {
             return null;
@@ -2227,7 +1849,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Updates the selection based on the current drag area.
      */
-    private void updateSelectionFromArea() {
+    void updateSelectionFromArea() {
         java.awt.Rectangle area = getSelectionRectangle();
         if (area.width == 0 && area.height == 0) {
             clearSelection();
@@ -2280,7 +1902,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Finds a wire endpoint at the provided point.
      */
-    private WireEndpointHit findWireEndpointAt(int mouseX, int mouseY) {
+    WireEndpointHit findWireEndpointAt(int mouseX, int mouseY) {
         int radiusSq = WIRE_ENDPOINT_RADIUS * WIRE_ENDPOINT_RADIUS;
         for (Wire wire : wires) {
             WireNode start = wire.getStart();
@@ -2306,7 +1928,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Returns an existing node at the position or creates a new one.
      */
-    private WireNode getOrCreateNodeAt(int x, int y) {
+    WireNode getOrCreateNodeAt(int x, int y) {
         for (Wire wire : wires) {
             WireNode start = wire.getStart();
             WireNode end = wire.getEnd();
@@ -2383,7 +2005,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Ensures wire endpoints are unique when dragging a wire.
      */
-    private void detachSharedEndpoints(Wire wire) {
+    void detachSharedEndpoints(Wire wire) {
         WireNode start = wire.getStart();
         WireNode end = wire.getEnd();
         if (start != null && start.getWireCount() > 1) {
@@ -2444,7 +2066,7 @@ public class CircuitPanel extends JPanel {
     /**
      * Finds a connection point near the provided coordinates.
      */
-    private ConnectionPoint findConnectionPointAt(int mouseX, int mouseY) {
+    ConnectionPoint findConnectionPointAt(int mouseX, int mouseY) {
         for (int i = components.size() - 1; i >= 0; i--) {
             CircuitComponent component = components.get(i);
             int radius = component.getConnectionDotSize() / 2;
@@ -2509,7 +2131,7 @@ public class CircuitPanel extends JPanel {
         }
     }
 
-    private void attachWireNodesAtComponent(CircuitComponent component) {
+    void attachWireNodesAtComponent(CircuitComponent component) {
         if (component == null) {
             return;
         }
@@ -2531,7 +2153,7 @@ public class CircuitPanel extends JPanel {
         }
     }
 
-    private void attachWireNodeToConnectionPoint(WireNode node, ConnectionPoint point) {
+    void attachWireNodeToConnectionPoint(WireNode node, ConnectionPoint point) {
         if (node == null || point == null) {
             return;
         }
@@ -2566,7 +2188,7 @@ public class CircuitPanel extends JPanel {
         }
     }
 
-    private void updateAttachedWireNodes(CircuitComponent component) {
+    void updateAttachedWireNodes(CircuitComponent component) {
         if (component == null) {
             return;
         }
@@ -2599,7 +2221,7 @@ public class CircuitPanel extends JPanel {
         node.setPosition(x, y);
     }
 
-    private void detachWireAttachments(CircuitComponent component) {
+    void detachWireAttachments(CircuitComponent component) {
         if (component == null) {
             return;
         }
@@ -2642,7 +2264,7 @@ public class CircuitPanel extends JPanel {
         return false;
     }
 
-    private circuitsim.components.electrical.VariableResistor findVariableResistorHandleAt(int worldX, int worldY) {
+    circuitsim.components.electrical.VariableResistor findVariableResistorHandleAt(int worldX, int worldY) {
         for (CircuitComponent component : components) {
             if (component instanceof circuitsim.components.electrical.VariableResistor slider
                     && slider.isSliderHandleHit(worldX, worldY)) {
