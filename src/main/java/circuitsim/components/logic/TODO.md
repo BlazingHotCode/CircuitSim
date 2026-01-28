@@ -1,1 +1,0 @@
-coordinates in corner of the screen
