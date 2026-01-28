@@ -6,6 +6,8 @@ and watch the simulation update live (analog voltages/currents + basic digital l
 CircuitSim is designed as a “sandbox” editor: you place components from a palette, connect them with
 wires, then the solver continuously recomputes values as you move/rotate/edit the circuit.
 
+**Current version:** 1.1.3
+
 ## Features
 
 - **Analog simulation**: continuous DC-style solver for voltages/currents with short-circuit detection.
@@ -27,7 +29,7 @@ If you're using VS Code, point the Java extension at a JDK 21 install (workspace
 **Run the prebuilt JAR**
 
 ```sh
-java -jar dist/CircuitSim-<version>.jar
+java -jar dist/CircuitSim-1.1.3.jar
 ```
 
 **Run from source**

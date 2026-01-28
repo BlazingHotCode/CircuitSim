@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3 - 2026-01-28
+
+### Changed
+- Internal refactor to improve maintainability (CircuitPanel and CircuitSim structure).
+- No intended user-facing behavior changes.
+
 ## 1.1.2 - 2026-01-27
 
 ### Added
@@ -10,4 +16,3 @@
 ### Fixed
 - Custom-component editor output indicators now update reliably (no “click to refresh” behavior).
 - SR latch / flip-flop behavior in custom components is more stable on startup.
-
