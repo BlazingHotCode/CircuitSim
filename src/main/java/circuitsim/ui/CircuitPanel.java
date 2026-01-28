@@ -114,9 +114,7 @@ public class CircuitPanel extends JPanel {
     private static final double ZOOM_STEP = 0.1;
     private static final int MAX_HISTORY = 200;
     private Path lastBoardPath;
-    private Path autosavePath;
-    private final Deque<BoardState> undoStack = new ArrayDeque<>();
-    private final Deque<BoardState> redoStack = new ArrayDeque<>();
+    private final BoardHistoryManager history = new BoardHistoryManager(MAX_HISTORY);
     private boolean applyingState;
     private Runnable toggleComponentBarAction;
     private java.util.function.Supplier<List<circuitsim.custom.CustomComponentDefinition>> customDefinitionsSupplier =
@@ -580,12 +578,10 @@ public class CircuitPanel extends JPanel {
         configureUndoRedoKeyBindings();
         configureComponentBarKeyBindings();
         if (enableAutosave) {
-            initializeAutosavePath();
-            attemptLoadAutosave();
-        } else {
-            autosavePath = null;
+            history.initializeAutosavePath();
+            history.attemptLoadAutosave(this::applyBoardState, this::resetHistoryState);
         }
-        if (undoStack.isEmpty()) {
+        if (history.isHistoryEmpty()) {
             recordHistoryState();
         }
     }
@@ -1003,30 +999,21 @@ public class CircuitPanel extends JPanel {
      */
     public void setChangeListener(Runnable changeListener) {
         this.changeListener = changeListener == null ? () -> {} : changeListener;
+        history.setChangeListener(this.changeListener);
     }
 
     /**
      * Sets the autosave path for this panel.
      */
     public void setAutosavePath(Path autosavePath, boolean load) {
-        this.autosavePath = autosavePath;
-        if (this.autosavePath != null) {
-            try {
-                Files.createDirectories(this.autosavePath.getParent());
-            } catch (IOException ex) {
-                this.autosavePath = null;
-            }
-        }
-        if (load) {
-            attemptLoadAutosave();
-        }
+        history.setAutosavePath(autosavePath, load, this::applyBoardState, this::resetHistoryState);
     }
 
     /**
      * Forces the current board state (including custom component definitions) to be written to autosave.
      */
     public void flushAutosave() {
-        writeAutosave(buildBoardState());
+        history.flushAutosave(this::buildBoardState);
     }
 
     /**
@@ -2209,111 +2196,34 @@ public class CircuitPanel extends JPanel {
     }
 
     /**
-     * Initializes the autosave file location based on the OS.
-     */
-    private void initializeAutosavePath() {
-        autosavePath = circuitsim.io.DataPaths.getAutosavePath();
-        try {
-            Files.createDirectories(autosavePath.getParent());
-        } catch (IOException ex) {
-            autosavePath = null;
-        }
-    }
-
-    /**
-     * Loads an autosaved board state if present.
-     */
-    private void attemptLoadAutosave() {
-        if (autosavePath == null || !Files.exists(autosavePath)) {
-            return;
-        }
-        try {
-            String json = Files.readString(autosavePath);
-            BoardState state = BoardStateIO.fromJson(json);
-            applyBoardState(state);
-            resetHistoryState(state);
-        } catch (IOException | RuntimeException ignored) {
-            // Autosave is best-effort; ignore failures.
-        }
-    }
-
-    /**
-     * Writes the autosave file to disk.
-     */
-    private void writeAutosave(BoardState state) {
-        if (autosavePath == null) {
-            return;
-        }
-        try {
-            Files.writeString(autosavePath, BoardStateIO.toJson(state));
-        } catch (IOException ignored) {
-            // Autosave is best-effort; ignore failures.
-        }
-    }
-
-    /**
      * Captures the current state for undo history and autosave.
      */
     private void recordHistoryState() {
         if (applyingState) {
             return;
         }
-        BoardState state = buildBoardState();
-        undoStack.push(state);
-        redoStack.clear();
-        trimHistory(undoStack);
-        writeAutosave(state);
-        changeListener.run();
+        history.recordHistoryState(this::buildBoardState);
     }
 
     /**
      * Resets history stacks to the provided state.
      */
     private void resetHistoryState(BoardState state) {
-        undoStack.clear();
-        redoStack.clear();
-        if (state != null) {
-            undoStack.push(state);
-            trimHistory(undoStack);
-        }
-        writeAutosave(state);
+        history.resetHistoryState(state);
     }
 
     /**
      * Undoes the last action and stores the current state for redo.
      */
     private void undoLastAction() {
-        if (undoStack.size() < 2) {
-            return;
-        }
-        BoardState current = undoStack.pop();
-        redoStack.push(current);
-        BoardState previous = undoStack.peek();
-        applyBoardState(previous);
-        writeAutosave(previous);
+        history.undo(this::applyBoardState);
     }
 
     /**
      * Redoes the last undone action.
      */
     private void redoLastAction() {
-        if (redoStack.isEmpty()) {
-            return;
-        }
-        BoardState next = redoStack.pop();
-        undoStack.push(next);
-        trimHistory(undoStack);
-        applyBoardState(next);
-        writeAutosave(next);
-    }
-
-    /**
-     * Ensures the history stack does not exceed the configured limit.
-     */
-    private void trimHistory(Deque<BoardState> stack) {
-        while (stack.size() > MAX_HISTORY) {
-            stack.removeLast();
-        }
+        history.redo(this::applyBoardState);
     }
 
     /**
