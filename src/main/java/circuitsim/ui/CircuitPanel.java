@@ -95,8 +95,7 @@ public class CircuitPanel extends JPanel {
     private static final int WIRE_OFFSET_STEP = 6;
     private static final int CROSSING_RADIUS = 7;
     Wire pendingWireStartAnchor;
-    int viewOffsetX;
-    int viewOffsetY;
+    final ViewTransform viewTransform = new ViewTransform();
     boolean panningView;
     int panStartX;
     int panStartY;
@@ -107,10 +106,7 @@ public class CircuitPanel extends JPanel {
     private int lastMouseWorldY;
     private boolean hasLastMouseWorld;
     private JPopupMenu clearPopup;
-    private double zoomFactor = 1.0;
-    private static final double MIN_ZOOM = 0.5;
-    private static final double MAX_ZOOM = 2.5;
-    private static final double ZOOM_STEP = 0.1;
+    private static final double ZOOM_STEP = ViewTransform.ZOOM_STEP;
     private static final int MAX_HISTORY = 200;
     private final BoardHistoryManager history = new BoardHistoryManager(MAX_HISTORY);
     private final BoardFileIO boardFileIO = new BoardFileIO();
@@ -166,7 +162,7 @@ public class CircuitPanel extends JPanel {
                 return;
             }
             double delta = rotation < 0 ? ZOOM_STEP : -ZOOM_STEP;
-            zoomAt(e.getX(), e.getY(), delta);
+            viewTransform.zoomAt(e.getX(), e.getY(), delta, this::repaint);
         });
         configureDeleteKeyBindings();
         configureRotateKeyBindings();
@@ -195,8 +191,7 @@ public class CircuitPanel extends JPanel {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         java.awt.geom.AffineTransform originalTransform = g2.getTransform();
-        g2.translate(viewOffsetX, viewOffsetY);
-        g2.scale(zoomFactor, zoomFactor);
+        viewTransform.apply(g2);
         drawGrid(g2);
         drawWires(g2);
         drawWirePreview(g2);
@@ -222,8 +217,8 @@ public class CircuitPanel extends JPanel {
     }
 
     private void drawCoordinatesHud(Graphics2D g2) {
-        int worldX = hasLastMouseWorld ? lastMouseWorldX : toWorldX(getWidth() / 2);
-        int worldY = hasLastMouseWorld ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        int worldX = hasLastMouseWorld ? lastMouseWorldX : viewTransform.toWorldX(getWidth() / 2);
+        int worldY = hasLastMouseWorld ? lastMouseWorldY : viewTransform.toWorldY(getHeight() / 2);
         int snappedX = Grid.snap(worldX);
         int snappedY = Grid.snap(worldY);
         coordinatesOverlay.draw(g2, this, propertiesPanel, snappedX, snappedY);
@@ -411,10 +406,11 @@ public class CircuitPanel extends JPanel {
         g2.setColor(Colors.GRID_LINE);
         int width = getWidth();
         int height = getHeight();
-        int leftWorld = (int) Math.floor(-viewOffsetX / zoomFactor);
-        int topWorld = (int) Math.floor(-viewOffsetY / zoomFactor);
-        int rightWorld = (int) Math.ceil((width - viewOffsetX) / zoomFactor);
-        int bottomWorld = (int) Math.ceil((height - viewOffsetY) / zoomFactor);
+        double zoomFactor = viewTransform.getZoomFactor();
+        int leftWorld = (int) Math.floor(-viewTransform.getOffsetX() / zoomFactor);
+        int topWorld = (int) Math.floor(-viewTransform.getOffsetY() / zoomFactor);
+        int rightWorld = (int) Math.ceil((width - viewTransform.getOffsetX()) / zoomFactor);
+        int bottomWorld = (int) Math.ceil((height - viewTransform.getOffsetY()) / zoomFactor);
         int startX = (int) Math.floor(leftWorld / (double) Grid.SIZE) * Grid.SIZE;
         int startY = (int) Math.floor(topWorld / (double) Grid.SIZE) * Grid.SIZE;
         for (int x = startX; x <= rightWorld; x += Grid.SIZE) {
@@ -501,8 +497,8 @@ public class CircuitPanel extends JPanel {
         }
         placementEntry = entry;
         placementPreview = entry.create(0, 0);
-        int startX = hasLastMouseWorld ? lastMouseWorldX : toWorldX(getWidth() / 2);
-        int startY = hasLastMouseWorld ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        int startX = hasLastMouseWorld ? lastMouseWorldX : viewTransform.toWorldX(getWidth() / 2);
+        int startY = hasLastMouseWorld ? lastMouseWorldY : viewTransform.toWorldY(getHeight() / 2);
         placementX = Grid.snap(startX);
         placementY = Grid.snap(startY);
         repaint();
@@ -540,7 +536,7 @@ public class CircuitPanel extends JPanel {
         }
         Point local = new Point(screenPoint);
         SwingUtilities.convertPointFromScreen(local, this);
-        addComponentAtWorld(entry, toWorldX(local.x), toWorldY(local.y));
+        addComponentAtWorld(entry, viewTransform.toWorldX(local.x), viewTransform.toWorldY(local.y));
     }
 
     /**
@@ -550,8 +546,8 @@ public class CircuitPanel extends JPanel {
         if (entry == null) {
             return;
         }
-        int targetX = hasLastMouseWorld ? lastMouseWorldX : toWorldX(getWidth() / 2);
-        int targetY = hasLastMouseWorld ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        int targetX = hasLastMouseWorld ? lastMouseWorldX : viewTransform.toWorldX(getWidth() / 2);
+        int targetY = hasLastMouseWorld ? lastMouseWorldY : viewTransform.toWorldY(getHeight() / 2);
         addComponentAtWorld(entry, targetX, targetY);
     }
 
@@ -559,8 +555,8 @@ public class CircuitPanel extends JPanel {
      * Stores the latest mouse position in world coordinates for palette placement.
      */
     void updateLastMouseWorld(int screenX, int screenY) {
-        lastMouseWorldX = toWorldX(screenX);
-        lastMouseWorldY = toWorldY(screenY);
+        lastMouseWorldX = viewTransform.toWorldX(screenX);
+        lastMouseWorldY = viewTransform.toWorldY(screenY);
         hasLastMouseWorld = true;
     }
 
@@ -568,8 +564,8 @@ public class CircuitPanel extends JPanel {
         if (placementEntry == null) {
             return;
         }
-        placementX = Grid.snap(toWorldX(screenX));
-        placementY = Grid.snap(toWorldY(screenY));
+        placementX = Grid.snap(viewTransform.toWorldX(screenX));
+        placementY = Grid.snap(viewTransform.toWorldY(screenY));
         repaint();
     }
 
@@ -906,7 +902,7 @@ public class CircuitPanel extends JPanel {
              */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                zoomAt(getWidth() / 2, getHeight() / 2, ZOOM_STEP);
+                viewTransform.zoomAt(getWidth() / 2, getHeight() / 2, ZOOM_STEP, CircuitPanel.this::repaint);
             }
         });
         actionMap.put("zoomOut", new javax.swing.AbstractAction() {
@@ -915,7 +911,7 @@ public class CircuitPanel extends JPanel {
              */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                zoomAt(getWidth() / 2, getHeight() / 2, -ZOOM_STEP);
+                viewTransform.zoomAt(getWidth() / 2, getHeight() / 2, -ZOOM_STEP, CircuitPanel.this::repaint);
             }
         });
     }
@@ -1048,10 +1044,7 @@ public class CircuitPanel extends JPanel {
      * Resets zoom and pan to defaults.
      */
     private void resetView() {
-        zoomFactor = 1.0;
-        viewOffsetX = 0;
-        viewOffsetY = 0;
-        repaint();
+        viewTransform.reset(this::repaint);
     }
 
     /**
@@ -1797,36 +1790,7 @@ public class CircuitPanel extends JPanel {
         repaint();
     }
 
-    /**
-     * Zooms in or out around the provided screen coordinate.
-     */
-    private void zoomAt(int screenX, int screenY, double delta) {
-        double nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomFactor + delta));
-        if (Math.abs(nextZoom - zoomFactor) < 0.0001) {
-            return;
-        }
-        double worldX = (screenX - viewOffsetX) / zoomFactor;
-        double worldY = (screenY - viewOffsetY) / zoomFactor;
-        zoomFactor = nextZoom;
-        viewOffsetX = (int) Math.round(screenX - (worldX * zoomFactor));
-        viewOffsetY = (int) Math.round(screenY - (worldY * zoomFactor));
-        repaint();
-    }
-
-    /**
-     * Converts a screen X coordinate to world space.
-     */
-    int toWorldX(int screenX) {
-        return (int) Math.round((screenX - viewOffsetX) / zoomFactor);
-    }
-
-    /**
-     * Converts a screen Y coordinate to world space.
-     */
-    int toWorldY(int screenY) {
-        return (int) Math.round((screenY - viewOffsetY) / zoomFactor);
-    }
-
+    // Zoom and screen/world conversion is implemented by viewTransform.
     /**
      * Finds a wire near the provided point.
      */

@@ -30,13 +30,13 @@ final class CircuitMouseHandler extends MouseAdapter {
             panel.panningView = true;
             panel.panStartX = e.getX();
             panel.panStartY = e.getY();
-            panel.panOriginOffsetX = panel.viewOffsetX;
-            panel.panOriginOffsetY = panel.viewOffsetY;
+            panel.panOriginOffsetX = panel.viewTransform.getOffsetX();
+            panel.panOriginOffsetY = panel.viewTransform.getOffsetY();
             panel.panMoved = false;
             return;
         }
-        int worldX = panel.toWorldX(e.getX());
-        int worldY = panel.toWorldY(e.getY());
+        int worldX = panel.viewTransform.toWorldX(e.getX());
+        int worldY = panel.viewTransform.toWorldY(e.getY());
         if (panel.placementEntry != null && SwingUtilities.isLeftMouseButton(e)) {
             panel.placeActiveComponentAt(worldX, worldY);
             return;
@@ -183,8 +183,8 @@ final class CircuitMouseHandler extends MouseAdapter {
 
     @Override
     public void mouseClicked(MouseEvent e) {
-        int worldX = panel.toWorldX(e.getX());
-        int worldY = panel.toWorldY(e.getY());
+        int worldX = panel.viewTransform.toWorldX(e.getX());
+        int worldY = panel.viewTransform.toWorldY(e.getY());
         if (e.getClickCount() == 2) {
             CircuitComponent component = panel.findComponentAtPoint(worldX, worldY);
             if (component instanceof circuitsim.components.electrical.LightBulb lightBulb
@@ -236,8 +236,8 @@ final class CircuitMouseHandler extends MouseAdapter {
     public void mouseDragged(MouseEvent e) {
         panel.updateLastMouseWorld(e.getX(), e.getY());
         if (panel.draggingSliderResistor != null) {
-            int worldX = panel.toWorldX(e.getX());
-            int worldY = panel.toWorldY(e.getY());
+            int worldX = panel.viewTransform.toWorldX(e.getX());
+            int worldY = panel.viewTransform.toWorldY(e.getY());
             panel.draggingSliderResistor.setWiperFromWorld(worldX, worldY);
             panel.updateAttachedWireNodes(panel.draggingSliderResistor);
             panel.repaint();
@@ -247,8 +247,8 @@ final class CircuitMouseHandler extends MouseAdapter {
             panel.panningView = true;
             panel.panStartX = e.getX();
             panel.panStartY = e.getY();
-            panel.panOriginOffsetX = panel.viewOffsetX;
-            panel.panOriginOffsetY = panel.viewOffsetY;
+            panel.panOriginOffsetX = panel.viewTransform.getOffsetX();
+            panel.panOriginOffsetY = panel.viewTransform.getOffsetY();
             panel.panMoved = false;
             panel.selectingArea = false;
             panel.draggingSelection = false;
@@ -264,16 +264,15 @@ final class CircuitMouseHandler extends MouseAdapter {
         if (panel.panningView) {
             int dx = e.getX() - panel.panStartX;
             int dy = e.getY() - panel.panStartY;
-            panel.viewOffsetX = panel.panOriginOffsetX + dx;
-            panel.viewOffsetY = panel.panOriginOffsetY + dy;
+            panel.viewTransform.setOffset(panel.panOriginOffsetX + dx, panel.panOriginOffsetY + dy);
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
                 panel.panMoved = true;
             }
             panel.repaint();
             return;
         }
-        int worldX = panel.toWorldX(e.getX());
-        int worldY = panel.toWorldY(e.getY());
+        int worldX = panel.viewTransform.toWorldX(e.getX());
+        int worldY = panel.viewTransform.toWorldY(e.getY());
         if (panel.selectingArea) {
             panel.selectionEndX = worldX;
             panel.selectionEndY = worldY;
@@ -326,8 +325,8 @@ final class CircuitMouseHandler extends MouseAdapter {
 
     @Override
     public void mouseReleased(MouseEvent e) {
-        int worldX = panel.toWorldX(e.getX());
-        int worldY = panel.toWorldY(e.getY());
+        int worldX = panel.viewTransform.toWorldX(e.getX());
+        int worldY = panel.viewTransform.toWorldY(e.getY());
         boolean didChange = false;
         if (panel.draggingSliderResistor != null) {
             panel.draggingSliderResistor.setWiperFromWorld(worldX, worldY);
@@ -395,8 +394,8 @@ final class CircuitMouseHandler extends MouseAdapter {
             panel.updatePlacementAtScreen(e.getX(), e.getY());
         }
         if (panel.creatingWire) {
-            int worldX = panel.toWorldX(e.getX());
-            int worldY = panel.toWorldY(e.getY());
+            int worldX = panel.viewTransform.toWorldX(e.getX());
+            int worldY = panel.viewTransform.toWorldY(e.getY());
             panel.wireDragX = Grid.snap(worldX);
             panel.wireDragY = Grid.snap(worldY);
             panel.repaint();
