@@ -53,14 +53,12 @@ public class CircuitPanel extends JPanel {
     final List<CircuitComponent> components = new ArrayList<>();
     private final ComponentPropertiesPanel propertiesPanel;
     private final List<Wire> wires = new ArrayList<>();
-    final List<CircuitComponent> selectedComponents = new ArrayList<>();
-    final List<Wire> selectedWires = new ArrayList<>();
+    final SelectionController selection;
     private final Map<CircuitComponent, Integer> selectionBaseRotations = new HashMap<>();
     private final ShortCircuitPopup shortCircuitPopup = new ShortCircuitPopup();
     private boolean lastShortCircuit = false;
     CircuitComponent draggedComponent;
-    CircuitComponent selectedComponent;
-    private Wire selectedWire;
+    // Selection state is managed by selection controller.
     WireNode newWireStartNode;
     boolean creatingWire;
     boolean lockedWire;
@@ -144,6 +142,7 @@ public class CircuitPanel extends JPanel {
      */
     public CircuitPanel(ComponentPropertiesPanel propertiesPanel, boolean enableAutosave) {
         this.propertiesPanel = propertiesPanel;
+        this.selection = new SelectionController(propertiesPanel, this::resetSelectionRotationState);
         setBackground(Colors.CANVAS_BG);
         setPreferredSize(new Dimension(800, 600));
         setLayout(null);
@@ -200,9 +199,9 @@ public class CircuitPanel extends JPanel {
             component.draw(g2);
         }
         drawPlacementPreview(g2);
-        if (!selectedComponents.isEmpty()) {
-            boolean drawHandles = selectedComponents.size() == 1 && selectedWires.isEmpty();
-            for (CircuitComponent component : selectedComponents) {
+        if (!selection.selectedComponents.isEmpty()) {
+            boolean drawHandles = selection.selectedComponents.size() == 1 && selection.selectedWires.isEmpty();
+            for (CircuitComponent component : selection.selectedComponents) {
                 drawSelection(g2, component, drawHandles);
             }
         }
@@ -365,7 +364,7 @@ public class CircuitPanel extends JPanel {
      * Highlights selected wires with a thicker overlay.
      */
     private void drawSelectedWires(Graphics2D g2) {
-        if (selectedWires.isEmpty()) {
+        if (selection.selectedWires.isEmpty()) {
             return;
         }
         java.awt.Color originalColor = g2.getColor();
@@ -376,7 +375,7 @@ public class CircuitPanel extends JPanel {
         for (RenderWire renderWire : lastRenderWires) {
             renderMap.put(renderWire.wire, renderWire);
         }
-        for (Wire wire : selectedWires) {
+        for (Wire wire : selection.selectedWires) {
             RenderWire renderWire = renderMap.get(wire);
             if (renderWire == null) {
                 continue;
@@ -428,7 +427,7 @@ public class CircuitPanel extends JPanel {
     void showContextMenu(MouseEvent e, int worldX, int worldY) {
         WireHit wireHit = findWireAt(worldX, worldY);
         if (wireHit != null) {
-            selectWire(wireHit.wire);
+            selection.selectWire(wireHit.wire);
             JPopupMenu menu = new JPopupMenu();
             JCheckBoxMenuItem showDataItem = new JCheckBoxMenuItem("Show Data", wireHit.wire.isShowData());
             showDataItem.addActionListener(event -> {
@@ -462,13 +461,13 @@ public class CircuitPanel extends JPanel {
             menu.show(this, e.getX(), e.getY());
             return;
         }
-        selectComponent(component);
+        selection.selectComponent(component);
         JPopupMenu menu = new JPopupMenu();
         JMenuItem deleteItem = new JMenuItem("Delete");
         deleteItem.addActionListener(event -> {
             component.disconnectAllConnections();
             components.remove(component);
-            clearSelection();
+            selection.clearSelection();
             recordHistoryState();
             repaint();
         });
@@ -718,12 +717,12 @@ public class CircuitPanel extends JPanel {
             replacement.setSize(replacement.getWidth(), replacement.getHeight());
             replacement.setRotationQuarterTurns(custom.getRotationQuarterTurns());
             components.set(i, replacement);
-            if (selectedComponents.contains(custom)) {
-                int index = selectedComponents.indexOf(custom);
-                selectedComponents.set(index, replacement);
+            if (selection.selectedComponents.contains(custom)) {
+                int index = selection.selectedComponents.indexOf(custom);
+                selection.selectedComponents.set(index, replacement);
             }
-            if (selectedComponent == custom) {
-                selectedComponent = replacement;
+            if (selection.selectedComponent == custom) {
+                selection.selectedComponent = replacement;
             }
         }
         repaint();
@@ -746,9 +745,9 @@ public class CircuitPanel extends JPanel {
             CustomComponentDefinition definition = custom.getDefinition();
             if (definition != null && customId.equals(definition.getId())) {
                 components.remove(i);
-                selectedComponents.remove(component);
-                if (selectedComponent == component) {
-                    selectedComponent = null;
+                selection.selectedComponents.remove(component);
+                if (selection.selectedComponent == component) {
+                    selection.selectedComponent = null;
                 }
                 removed = true;
             }
@@ -790,13 +789,13 @@ public class CircuitPanel extends JPanel {
         if (wire == null) {
             return false;
         }
-        selectedWires.remove(wire);
-        if (selectedWire == wire) {
-            selectedWire = null;
+        selection.selectedWires.remove(wire);
+        if (selection.selectedWire == wire) {
+            selection.selectedWire = null;
         }
         wire.detach();
         wires.remove(wire);
-        updatePropertiesPanel();
+        selection.refresh();
         return true;
     }
 
@@ -804,11 +803,11 @@ public class CircuitPanel extends JPanel {
      * Deletes the current selection of components and wires.
      */
     private void deleteSelected() {
-        if (selectedComponents.isEmpty() && selectedWires.isEmpty()) {
+        if (selection.selectedComponents.isEmpty() && selection.selectedWires.isEmpty()) {
             return;
         }
-        List<CircuitComponent> toDeleteComponents = new ArrayList<>(selectedComponents);
-        List<Wire> toDeleteWires = new ArrayList<>(selectedWires);
+        List<CircuitComponent> toDeleteComponents = new ArrayList<>(selection.selectedComponents);
+        List<Wire> toDeleteWires = new ArrayList<>(selection.selectedWires);
         for (CircuitComponent component : toDeleteComponents) {
             component.disconnectAllConnections();
             components.remove(component);
@@ -816,7 +815,7 @@ public class CircuitPanel extends JPanel {
         for (Wire wire : toDeleteWires) {
             removeWire(wire);
         }
-        clearSelection();
+        selection.clearSelection();
         recordHistoryState();
         repaint();
     }
@@ -853,7 +852,7 @@ public class CircuitPanel extends JPanel {
              */
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
-                if (!selectedComponents.isEmpty()) {
+                if (!selection.selectedComponents.isEmpty()) {
                     rotateSelectionGroup();
                     repaint();
                 }
@@ -871,7 +870,8 @@ public class CircuitPanel extends JPanel {
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "moveSelectionRight");
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "moveSelectionUp");
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "moveSelectionDown");
-        java.util.function.BooleanSupplier hasSelection = () -> !selectedComponents.isEmpty() || !selectedWires.isEmpty();
+        java.util.function.BooleanSupplier hasSelection = () ->
+                !selection.selectedComponents.isEmpty() || !selection.selectedWires.isEmpty();
         actionMap.put("moveSelectionLeft", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(-Grid.SIZE, 0)));
         actionMap.put("moveSelectionRight", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(Grid.SIZE, 0)));
         actionMap.put("moveSelectionUp", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(0, -Grid.SIZE)));
@@ -1048,135 +1048,6 @@ public class CircuitPanel extends JPanel {
     }
 
     /**
-     * Selects a single component and clears other selections.
-     */
-    void selectComponent(CircuitComponent component) {
-        selectedComponents.clear();
-        selectedWires.clear();
-        if (component != null) {
-            selectedComponents.add(component);
-        }
-        selectedComponent = component;
-        selectedWire = null;
-        updatePropertiesPanel();
-        resetSelectionRotationState();
-    }
-
-    /**
-     * Selects a single wire and clears other selections.
-     */
-    void selectWire(Wire wire) {
-        selectedComponents.clear();
-        selectedWires.clear();
-        if (wire != null) {
-            selectedWires.add(wire);
-        }
-        selectedWire = wire;
-        selectedComponent = null;
-        updatePropertiesPanel();
-        resetSelectionRotationState();
-    }
-
-    /**
-     * Updates selection to include multiple components and wires.
-     */
-    private void setMultiSelection(List<CircuitComponent> components, List<Wire> wires) {
-        selectedComponents.clear();
-        selectedComponents.addAll(components);
-        selectedWires.clear();
-        selectedWires.addAll(wires);
-        selectedComponent = (selectedComponents.size() == 1 && selectedWires.isEmpty())
-                ? selectedComponents.get(0)
-                : null;
-        selectedWire = (selectedWires.size() == 1 && selectedComponents.isEmpty())
-                ? selectedWires.get(0)
-                : null;
-        updatePropertiesPanel();
-        resetSelectionRotationState();
-    }
-
-    /**
-     * Toggles component selection in multi-select mode.
-     */
-    void toggleComponentSelection(CircuitComponent component) {
-        if (component == null) {
-            return;
-        }
-        if (selectedComponents.contains(component)) {
-            selectedComponents.remove(component);
-        } else {
-            selectedComponents.add(component);
-        }
-        selectedWires.removeIf(wire -> wire == null);
-        selectedComponent = (selectedComponents.size() == 1 && selectedWires.isEmpty())
-                ? selectedComponents.get(0)
-                : null;
-        selectedWire = (selectedWires.size() == 1 && selectedComponents.isEmpty())
-                ? selectedWires.get(0)
-                : null;
-        updatePropertiesPanel();
-        resetSelectionRotationState();
-    }
-
-    /**
-     * Toggles wire selection in multi-select mode.
-     */
-    void toggleWireSelection(Wire wire) {
-        if (wire == null) {
-            return;
-        }
-        if (selectedWires.contains(wire)) {
-            selectedWires.remove(wire);
-        } else {
-            selectedWires.add(wire);
-        }
-        selectedComponents.removeIf(component -> component == null);
-        selectedComponent = (selectedComponents.size() == 1 && selectedWires.isEmpty())
-                ? selectedComponents.get(0)
-                : null;
-        selectedWire = (selectedWires.size() == 1 && selectedComponents.isEmpty())
-                ? selectedWires.get(0)
-                : null;
-        updatePropertiesPanel();
-        resetSelectionRotationState();
-    }
-
-    /**
-     * Clears all selection state.
-     */
-    void clearSelection() {
-        selectedComponents.clear();
-        selectedWires.clear();
-        selectedComponent = null;
-        selectedWire = null;
-        updatePropertiesPanel();
-        resetSelectionRotationState();
-    }
-
-    /**
-     * Updates the properties panel with the current selection.
-     */
-    private void updatePropertiesPanel() {
-        if (selectedComponents.size() == 1 && selectedWires.isEmpty()) {
-            CircuitComponent component = selectedComponents.get(0);
-            if (component == null || component instanceof Ammeter || component instanceof Voltmeter) {
-                propertiesPanel.setOwner(null);
-            } else {
-                propertiesPanel.setOwner(component);
-            }
-        } else {
-            propertiesPanel.setOwner(null);
-        }
-    }
-
-    /**
-     * @return true if more than one item is selected
-     */
-    boolean isMultiSelection() {
-        return selectedComponents.size() + selectedWires.size() > 1;
-    }
-
-    /**
      * Begins dragging a multi-selection.
      */
     void beginSelectionDrag(int worldX, int worldY) {
@@ -1186,7 +1057,7 @@ public class CircuitPanel extends JPanel {
         draggedComponent = null;
         draggingWire = null;
         resizing = false;
-        for (Wire wire : selectedWires) {
+        for (Wire wire : selection.selectedWires) {
             detachSharedEndpoints(wire);
         }
     }
@@ -1212,13 +1083,13 @@ public class CircuitPanel extends JPanel {
      * Moves selected components and wires by the provided delta.
      */
     private void moveSelectionBy(int dx, int dy) {
-        for (CircuitComponent component : selectedComponents) {
+        for (CircuitComponent component : selection.selectedComponents) {
             component.setPosition(component.getX() + dx, component.getY() + dy);
         }
-        for (CircuitComponent component : selectedComponents) {
+        for (CircuitComponent component : selection.selectedComponents) {
             updateAttachedWireNodes(component);
         }
-        for (Wire wire : selectedWires) {
+        for (Wire wire : selection.selectedWires) {
             wire.moveBy(dx, dy);
         }
     }
@@ -1227,7 +1098,7 @@ public class CircuitPanel extends JPanel {
      * Rotates the entire selection around its bounding box center.
      */
     void rotateSelectionGroup() {
-        if (selectedComponents.isEmpty() && selectedWires.isEmpty()) {
+        if (selection.selectedComponents.isEmpty() && selection.selectedWires.isEmpty()) {
             return;
         }
         java.awt.Rectangle bounds = getSelectionBounds();
@@ -1238,7 +1109,7 @@ public class CircuitPanel extends JPanel {
         double centerX = bounds.getCenterX();
         double centerY = bounds.getCenterY();
         Set<WireNode> nodesToRotate = prepareWireNodesForRotation();
-        for (CircuitComponent component : selectedComponents) {
+        for (CircuitComponent component : selection.selectedComponents) {
             int baseRotation = selectionBaseRotations.getOrDefault(component,
                     component.getRotationQuarterTurns() % 2);
             int desiredRotation = (baseRotation + (selectionRotationTurns % 2)) % 2;
@@ -1246,7 +1117,7 @@ public class CircuitPanel extends JPanel {
             boolean rotateComponent = desiredRotation != currentRotation;
             rotateComponentAround(component, centerX, centerY, rotateComponent);
         }
-        for (CircuitComponent component : selectedComponents) {
+        for (CircuitComponent component : selection.selectedComponents) {
             updateAttachedWireNodes(component);
         }
         for (WireNode node : nodesToRotate) {
@@ -1264,7 +1135,7 @@ public class CircuitPanel extends JPanel {
         int minY = Integer.MAX_VALUE;
         int maxX = Integer.MIN_VALUE;
         int maxY = Integer.MIN_VALUE;
-        for (CircuitComponent component : selectedComponents) {
+        for (CircuitComponent component : selection.selectedComponents) {
             java.awt.Rectangle bounds = component.getBounds();
             minX = Math.min(minX, bounds.x);
             minY = Math.min(minY, bounds.y);
@@ -1272,7 +1143,7 @@ public class CircuitPanel extends JPanel {
             maxY = Math.max(maxY, bounds.y + bounds.height);
             hasSelection = true;
         }
-        for (Wire wire : selectedWires) {
+        for (Wire wire : selection.selectedWires) {
             if (wire.getStart() == null || wire.getEnd() == null) {
                 continue;
             }
@@ -1297,12 +1168,12 @@ public class CircuitPanel extends JPanel {
      */
     private Set<WireNode> prepareWireNodesForRotation() {
         Set<WireNode> nodesToRotate = new HashSet<>();
-        if (selectedWires.isEmpty()) {
+        if (selection.selectedWires.isEmpty()) {
             return nodesToRotate;
         }
-        Set<Wire> selectedWireSet = new HashSet<>(selectedWires);
+        Set<Wire> selectedWireSet = new HashSet<>(selection.selectedWires);
         Map<WireNode, WireNode> detachedNodes = new HashMap<>();
-        for (Wire wire : selectedWires) {
+        for (Wire wire : selection.selectedWires) {
             WireNode start = wire.getStart();
             WireNode end = wire.getEnd();
             if (start != null) {
@@ -1423,7 +1294,7 @@ public class CircuitPanel extends JPanel {
     private void resetSelectionRotationState() {
         selectionRotationTurns = 0;
         selectionBaseRotations.clear();
-        for (CircuitComponent component : selectedComponents) {
+        for (CircuitComponent component : selection.selectedComponents) {
             selectionBaseRotations.put(component, component.getRotationQuarterTurns() % 2);
         }
     }
@@ -1622,7 +1493,7 @@ public class CircuitPanel extends JPanel {
             wires.add(wire);
         }
         rebuildWireAttachments();
-        clearSelection();
+        selection.clearSelection();
         applyingState = false;
         repaint();
     }
@@ -1785,7 +1656,7 @@ public class CircuitPanel extends JPanel {
             wire.detach();
         }
         wires.clear();
-        clearSelection();
+        selection.clearSelection();
         recordHistoryState();
         repaint();
     }
@@ -1816,7 +1687,7 @@ public class CircuitPanel extends JPanel {
     void updateSelectionFromArea() {
         java.awt.Rectangle area = getSelectionRectangle();
         if (area.width == 0 && area.height == 0) {
-            clearSelection();
+            selection.clearSelection();
             return;
         }
         List<CircuitComponent> areaComponents = new ArrayList<>();
@@ -1831,7 +1702,7 @@ public class CircuitPanel extends JPanel {
                 areaWires.add(wire);
             }
         }
-        setMultiSelection(areaComponents, areaWires);
+        selection.setMultiSelection(areaComponents, areaWires);
     }
 
     /**

@@ -42,15 +42,15 @@ final class CircuitMouseHandler extends MouseAdapter {
             return;
         }
         if (SwingUtilities.isLeftMouseButton(e)) {
-            circuitsim.components.electrical.VariableResistor slider = panel.findVariableResistorHandleAt(worldX, worldY);
-            if (slider != null) {
-                panel.draggingSliderResistor = slider;
-                panel.selectComponent(slider);
-                slider.setWiperFromWorld(worldX, worldY);
-                panel.updateAttachedWireNodes(slider);
-                panel.repaint();
-                return;
-            }
+                circuitsim.components.electrical.VariableResistor slider = panel.findVariableResistorHandleAt(worldX, worldY);
+                if (slider != null) {
+                    panel.draggingSliderResistor = slider;
+                    panel.selection.selectComponent(slider);
+                    slider.setWiperFromWorld(worldX, worldY);
+                    panel.updateAttachedWireNodes(slider);
+                    panel.repaint();
+                    return;
+                }
         }
         if (panel.creatingWire && panel.lockedWire) {
             int endX = Grid.snap(worldX);
@@ -70,13 +70,13 @@ final class CircuitMouseHandler extends MouseAdapter {
         ConnectionPoint hitPoint = panel.findConnectionPointAt(worldX, worldY);
         if (hitPoint != null) {
             if (toggleSelection) {
-                panel.toggleComponentSelection(hitPoint.getOwner());
+                panel.selection.toggleComponentSelection(hitPoint.getOwner());
                 panel.repaint();
                 return;
             }
-            panel.selectComponent(hitPoint.getOwner());
-            int startX = panel.selectedComponent.getConnectionPointWorldX(hitPoint);
-            int startY = panel.selectedComponent.getConnectionPointWorldY(hitPoint);
+            panel.selection.selectComponent(hitPoint.getOwner());
+            int startX = panel.selection.selectedComponent.getConnectionPointWorldX(hitPoint);
+            int startY = panel.selection.selectedComponent.getConnectionPointWorldY(hitPoint);
             panel.newWireStartNode = panel.getOrCreateNodeAt(startX, startY);
             panel.attachWireNodeToConnectionPoint(panel.newWireStartNode, hitPoint);
             panel.creatingWire = true;
@@ -90,14 +90,14 @@ final class CircuitMouseHandler extends MouseAdapter {
         WireEndpointHit endpointHit = panel.findWireEndpointAt(worldX, worldY);
         if (endpointHit != null) {
             if (toggleSelection) {
-                panel.toggleWireSelection(endpointHit.wire);
+                panel.selection.toggleWireSelection(endpointHit.wire);
                 panel.repaint();
                 return;
             }
             panel.newWireStartNode = endpointHit.node;
             panel.creatingWire = true;
             panel.lockedWire = e.isShiftDown();
-            panel.selectWire(endpointHit.wire);
+            panel.selection.selectWire(endpointHit.wire);
             panel.pendingWireStartAnchor = endpointHit.wire;
             panel.wireDragX = panel.newWireStartNode.getX();
             panel.wireDragY = panel.newWireStartNode.getY();
@@ -107,16 +107,16 @@ final class CircuitMouseHandler extends MouseAdapter {
         WireHit wireHit = panel.findWireAt(worldX, worldY);
         if (wireHit != null) {
             if (toggleSelection) {
-                panel.toggleWireSelection(wireHit.wire);
+                panel.selection.toggleWireSelection(wireHit.wire);
                 panel.repaint();
                 return;
             }
-            if (panel.isMultiSelection() && panel.selectedWires.contains(wireHit.wire)) {
+            if (panel.selection.isMultiSelection() && panel.selection.selectedWires.contains(wireHit.wire)) {
                 panel.beginSelectionDrag(worldX, worldY);
                 return;
             }
             panel.draggingWire = wireHit.wire;
-            panel.selectWire(wireHit.wire);
+            panel.selection.selectWire(wireHit.wire);
             panel.wireDragStartX = Grid.snap(worldX);
             panel.wireDragStartY = Grid.snap(worldY);
             panel.wireStartAX = panel.draggingWire.getStart().getX();
@@ -131,15 +131,15 @@ final class CircuitMouseHandler extends MouseAdapter {
             CircuitComponent component = panel.components.get(i);
             if (component.contains(worldX, worldY)) {
                 if (toggleSelection) {
-                    panel.toggleComponentSelection(component);
+                    panel.selection.toggleComponentSelection(component);
                     panel.repaint();
                     return;
                 }
-                if (panel.isMultiSelection() && panel.selectedComponents.contains(component)) {
+                if (panel.selection.isMultiSelection() && panel.selection.selectedComponents.contains(component)) {
                     panel.beginSelectionDrag(worldX, worldY);
                     return;
                 }
-                panel.selectComponent(component);
+                panel.selection.selectComponent(component);
                 if (panel.isInRotateHandle(component, worldX, worldY)) {
                     panel.rotateSelectionGroup();
                     panel.repaint();
@@ -161,8 +161,8 @@ final class CircuitMouseHandler extends MouseAdapter {
                 return;
             }
         }
-        if (!panel.isMultiSelection() && panel.selectedComponent != null
-                && panel.isInRotateHandle(panel.selectedComponent, worldX, worldY)) {
+        if (!panel.selection.isMultiSelection() && panel.selection.selectedComponent != null
+                && panel.isInRotateHandle(panel.selection.selectedComponent, worldX, worldY)) {
             panel.rotateSelectionGroup();
             panel.repaint();
             return;
@@ -170,7 +170,7 @@ final class CircuitMouseHandler extends MouseAdapter {
         if (toggleSelection) {
             return;
         }
-        panel.clearSelection();
+        panel.selection.clearSelection();
         panel.draggedComponent = null;
         panel.resizing = false;
         panel.selectingArea = true;
@@ -190,7 +190,7 @@ final class CircuitMouseHandler extends MouseAdapter {
             if (component instanceof circuitsim.components.electrical.LightBulb lightBulb
                     && lightBulb.isBurnedOut()) {
                 lightBulb.setBurnedOut(false);
-                panel.selectComponent(lightBulb);
+                panel.selection.selectComponent(lightBulb);
                 panel.recordHistoryState();
                 panel.repaint();
                 return;
@@ -219,13 +219,13 @@ final class CircuitMouseHandler extends MouseAdapter {
             } else if (component instanceof CustomInputPort inputPort
                     && panel.findConnectionPointAt(worldX, worldY) == null) {
                 inputPort.setActive(!inputPort.isActive());
-                panel.selectComponent(inputPort);
+                panel.selection.selectComponent(inputPort);
                 panel.recordHistoryState();
                 panel.repaint();
             } else if (component instanceof circuitsim.components.electrical.Source source
                     && panel.findConnectionPointAt(worldX, worldY) == null) {
                 source.setActive(!source.isActive());
-                panel.selectComponent(source);
+                panel.selection.selectComponent(source);
                 panel.recordHistoryState();
                 panel.repaint();
             }
