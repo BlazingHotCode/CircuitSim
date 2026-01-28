@@ -1287,10 +1287,17 @@ public class CircuitPanel extends JPanel {
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "moveSelectionRight");
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "moveSelectionUp");
         inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "moveSelectionDown");
-        actionMap.put("moveSelectionLeft", new MoveSelectionAction(-Grid.SIZE, 0));
-        actionMap.put("moveSelectionRight", new MoveSelectionAction(Grid.SIZE, 0));
-        actionMap.put("moveSelectionUp", new MoveSelectionAction(0, -Grid.SIZE));
-        actionMap.put("moveSelectionDown", new MoveSelectionAction(0, Grid.SIZE));
+        java.util.function.BooleanSupplier hasSelection = () -> !selectedComponents.isEmpty() || !selectedWires.isEmpty();
+        actionMap.put("moveSelectionLeft", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(-Grid.SIZE, 0)));
+        actionMap.put("moveSelectionRight", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(Grid.SIZE, 0)));
+        actionMap.put("moveSelectionUp", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(0, -Grid.SIZE)));
+        actionMap.put("moveSelectionDown", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(0, Grid.SIZE)));
+    }
+
+    private void moveSelectionStep(int dx, int dy) {
+        moveSelectionBy(dx, dy);
+        recordHistoryState();
+        repaint();
     }
 
     /**
@@ -1457,35 +1464,6 @@ public class CircuitPanel extends JPanel {
         viewOffsetX = 0;
         viewOffsetY = 0;
         repaint();
-    }
-
-    /**
-     * Action that moves the current selection by a grid delta.
-     */
-    private class MoveSelectionAction extends javax.swing.AbstractAction {
-        private final int dx;
-        private final int dy;
-
-        /**
-         * @param dx delta in X
-         * @param dy delta in Y
-         */
-        private MoveSelectionAction(int dx, int dy) {
-            this.dx = dx;
-            this.dy = dy;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void actionPerformed(java.awt.event.ActionEvent e) {
-            if (!selectedComponents.isEmpty() || !selectedWires.isEmpty()) {
-                moveSelectionBy(dx, dy);
-                recordHistoryState();
-                repaint();
-            }
-        }
     }
 
     /**
