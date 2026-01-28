@@ -113,8 +113,8 @@ public class CircuitPanel extends JPanel {
     private static final double MAX_ZOOM = 2.5;
     private static final double ZOOM_STEP = 0.1;
     private static final int MAX_HISTORY = 200;
-    private Path lastBoardPath;
     private final BoardHistoryManager history = new BoardHistoryManager(MAX_HISTORY);
+    private final BoardFileIO boardFileIO = new BoardFileIO();
     private boolean applyingState;
     private Runnable toggleComponentBarAction;
     private java.util.function.Supplier<List<circuitsim.custom.CustomComponentDefinition>> customDefinitionsSupplier =
@@ -1889,61 +1889,14 @@ public class CircuitPanel extends JPanel {
      * Saves the current board state to a JSON file.
      */
     private void saveBoardState() {
-        JFileChooser chooser = new JFileChooser();
-        if (lastBoardPath != null) {
-            chooser.setSelectedFile(lastBoardPath.toFile());
-        }
-        int result = chooser.showSaveDialog(this);
-        if (result != JFileChooser.APPROVE_OPTION) {
-            return;
-        }
-        Path selected = chooser.getSelectedFile().toPath();
-        Path path = ensureJsonExtension(selected);
-        BoardState state = buildBoardState();
-        try {
-            Files.writeString(path, BoardStateIO.toJson(state));
-            lastBoardPath = path;
-        } catch (IOException ex) {
-            showError("Failed to save board state.", ex);
-        }
+        boardFileIO.save(this, this::buildBoardState, this::showError);
     }
 
     /**
      * Loads a board state from a JSON file.
      */
     private void loadBoardState() {
-        JFileChooser chooser = new JFileChooser();
-        if (lastBoardPath != null) {
-            chooser.setSelectedFile(lastBoardPath.toFile());
-        }
-        int result = chooser.showOpenDialog(this);
-        if (result != JFileChooser.APPROVE_OPTION) {
-            return;
-        }
-        Path path = chooser.getSelectedFile().toPath();
-        try {
-            String json = Files.readString(path);
-            BoardState state = BoardStateIO.fromJson(json);
-            state = boardLoadTransform.apply(state);
-            applyBoardState(state);
-            lastBoardPath = path;
-            resetHistoryState(state);
-        } catch (IOException ex) {
-            showError("Failed to load board state.", ex);
-        } catch (RuntimeException ex) {
-            showError("Invalid board state file.", ex);
-        }
-    }
-
-    /**
-     * Ensures the selected file path ends with .json.
-     */
-    private Path ensureJsonExtension(Path selected) {
-        String name = selected.getFileName().toString();
-        if (name.toLowerCase().endsWith(".json")) {
-            return selected;
-        }
-        return selected.resolveSibling(name + ".json");
+        boardFileIO.load(this, boardLoadTransform, this::applyBoardState, this::resetHistoryState, this::showError);
     }
 
     /**
