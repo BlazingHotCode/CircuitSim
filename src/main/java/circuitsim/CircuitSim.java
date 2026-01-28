@@ -39,184 +39,186 @@ public class CircuitSim {
      * Launches the CircuitSim application.
      */
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            JFrame frame = createMainFrame();
-            ComponentPropertiesPanel propertiesPanel = new ComponentPropertiesPanel();
-            CustomComponentLibrary library = new CustomComponentLibrary();
+        SwingUtilities.invokeLater(CircuitSim::startApp);
+    }
 
-            CircuitPanel mainPanel = new CircuitPanel(propertiesPanel);
-            CircuitPanel editorPanel = new CircuitPanel(propertiesPanel, false);
-            editorPanel.setTreatCustomOutputsAsGround(true);
+    private static void startApp() {
+        JFrame frame = createMainFrame();
+        ComponentPropertiesPanel propertiesPanel = new ComponentPropertiesPanel();
+        CustomComponentLibrary library = new CustomComponentLibrary();
 
-            CircuitPanel[] activePanel = new CircuitPanel[] { mainPanel };
-            CustomComponentDefinition[] editingDefinition = new CustomComponentDefinition[1];
-            propertiesPanel.setOnChange(() -> {
-                activePanel[0].handlePropertyChange();
-                activePanel[0].repaint();
-                if (editorPanel.isVisible() && editingDefinition[0] != null) {
-                    saveEditorDefinition(editorPanel, editingDefinition[0], library, frame);
-                }
-            });
+        CircuitPanel mainPanel = new CircuitPanel(propertiesPanel);
+        CircuitPanel editorPanel = new CircuitPanel(propertiesPanel, false);
+        editorPanel.setTreatCustomOutputsAsGround(true);
 
+        CircuitPanel[] activePanel = new CircuitPanel[] { mainPanel };
+        CustomComponentDefinition[] editingDefinition = new CustomComponentDefinition[1];
+        propertiesPanel.setOnChange(() -> {
+            activePanel[0].handlePropertyChange();
+            activePanel[0].repaint();
+            if (editorPanel.isVisible() && editingDefinition[0] != null) {
+                saveEditorDefinition(editorPanel, editingDefinition[0], library, frame);
+            }
+        });
+
+        configureRegistryForMain(library);
+        ComponentBarPanel mainBar = new ComponentBarPanel(mainPanel);
+        ComponentBarPanel editorBar = new ComponentBarPanel(editorPanel);
+        mainPanel.setComponentBarToggle(mainBar::toggleVisibility);
+        editorPanel.setComponentBarToggle(editorBar::toggleVisibility);
+
+        WirePalettePanel mainPalette = new WirePalettePanel(
+                mainPanel.getActiveWireColor(),
+                mainPanel::setActiveWireColor);
+        WirePalettePanel editorPalette = new WirePalettePanel(
+                editorPanel.getActiveWireColor(),
+                editorPanel::setActiveWireColor);
+        ClearBoardPanel mainClear = new ClearBoardPanel(mainPanel::requestClearBoard);
+        ClearBoardPanel editorClear = new ClearBoardPanel(editorPanel::requestClearBoard);
+
+        TempModePanel[] tempModePanelHolder = new TempModePanel[1];
+        tempModePanelHolder[0] = new TempModePanel(() -> {
+            try {
+                library.clearTempMode();
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(frame, "Failed to clear temp data.",
+                        "CircuitSim", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
             configureRegistryForMain(library);
-            ComponentBarPanel mainBar = new ComponentBarPanel(mainPanel);
-            ComponentBarPanel editorBar = new ComponentBarPanel(editorPanel);
-            mainPanel.setComponentBarToggle(mainBar::toggleVisibility);
-            editorPanel.setComponentBarToggle(editorBar::toggleVisibility);
+            mainBar.refreshGroups();
+            mainPanel.setAutosavePath(circuitsim.io.DataPaths.getAutosavePath(), true);
+            tempModePanelHolder[0].setVisible(false);
+        });
+        TempModePanel tempModePanel = tempModePanelHolder[0];
+        tempModePanel.setVisible(library.isTempMode());
 
-            WirePalettePanel mainPalette = new WirePalettePanel(
-                    mainPanel.getActiveWireColor(),
-                    mainPanel::setActiveWireColor);
-            WirePalettePanel editorPalette = new WirePalettePanel(
-                    editorPanel.getActiveWireColor(),
-                    editorPanel::setActiveWireColor);
-            ClearBoardPanel mainClear = new ClearBoardPanel(mainPanel::requestClearBoard);
-            ClearBoardPanel editorClear = new ClearBoardPanel(editorPanel::requestClearBoard);
+        CustomEditorPanel[] editorPanelControlsHolder = new CustomEditorPanel[1];
+        editorPanelControlsHolder[0] = new CustomEditorPanel(() -> {
+            CustomComponentDefinition updated = saveEditorDefinition(editorPanel, editingDefinition[0],
+                    library, frame);
+            if (updated == null) {
+                return;
+            }
+            mainPanel.updateCustomComponentInstances(updated.getId(), updated);
+            mainPanel.flushAutosave();
+            editingDefinition[0] = null;
+            configureRegistryForMain(library);
+            mainBar.refreshGroups();
+            exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
+                    mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
+        }, () -> {
+            editingDefinition[0] = null;
+            configureRegistryForMain(library);
+            mainBar.refreshGroups();
+            exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
+                    mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
+        });
+        CustomEditorPanel editorPanelControls = editorPanelControlsHolder[0];
+        editorPanelControls.setVisible(false);
 
-            TempModePanel[] tempModePanelHolder = new TempModePanel[1];
-            tempModePanelHolder[0] = new TempModePanel(() -> {
-                try {
-                    library.clearTempMode();
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(frame, "Failed to clear temp data.",
-                            "CircuitSim", JOptionPane.ERROR_MESSAGE);
-                    return;
-                }
-                configureRegistryForMain(library);
-                mainBar.refreshGroups();
-                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getAutosavePath(), true);
-                tempModePanelHolder[0].setVisible(false);
-            });
-            TempModePanel tempModePanel = tempModePanelHolder[0];
-            tempModePanel.setVisible(library.isTempMode());
+        mainPanel.setCustomDefinitionsSupplier(library::getDefinitions);
+        mainPanel.setCustomDefinitionResolver(library::getDefinition);
+        editorPanel.setCustomDefinitionResolver(library::getDefinition);
+        editorPanel.setCustomDefinitionsSupplier(java.util.Collections::emptyList);
+        editorPanel.setChangeListener(() -> {
+            if (!editorPanel.isVisible() || editingDefinition[0] == null) {
+                return;
+            }
+            CustomComponentDefinition updated = saveEditorDefinition(editorPanel, editingDefinition[0],
+                    library, frame);
+            if (updated != null) {
+                editingDefinition[0] = updated;
+                mainPanel.flushAutosave();
+            }
+        });
 
-            CustomEditorPanel[] editorPanelControlsHolder = new CustomEditorPanel[1];
-            editorPanelControlsHolder[0] = new CustomEditorPanel(() -> {
-                CustomComponentDefinition updated = saveEditorDefinition(editorPanel, editingDefinition[0],
-	                        library, frame);
-	                if (updated == null) {
-	                    return;
-	                }
-	                mainPanel.updateCustomComponentInstances(updated.getId(), updated);
-	                mainPanel.flushAutosave();
-	                editingDefinition[0] = null;
-	                configureRegistryForMain(library);
-	                mainBar.refreshGroups();
-	                exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
-	                        mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
-            }, () -> {
+        // Load autosave only after custom-component resolvers are configured so that
+        // saved Custom component instances can be reconstructed on startup.
+        if (library.isTempMode()) {
+            mainPanel.setAutosavePath(circuitsim.io.DataPaths.getTempAutosavePath(), true);
+        } else {
+            mainPanel.setAutosavePath(circuitsim.io.DataPaths.getAutosavePath(), true);
+        }
+
+        mainPanel.setBoardLoadTransform(state -> handleBoardLoad(state, library, tempModePanel,
+                mainBar, mainPanel, frame));
+
+        mainPanel.setCustomComponentHandlers(() -> {
+            String name = JOptionPane.showInputDialog(frame, "New custom component name:",
+                    "New Custom Component", JOptionPane.PLAIN_MESSAGE);
+            if (name == null || name.trim().isEmpty()) {
+                return;
+            }
+            CustomComponentDefinition definition = new CustomComponentDefinition(name.trim(),
+                    new ArrayList<>(), new ArrayList<>(),
+                    new BoardState(BoardState.CURRENT_VERSION,
+                            mainPanel.getActiveWireColor(), new ArrayList<>(), new ArrayList<>()));
+            editingDefinition[0] = definition;
+            enterEditor(definition, library, activePanel, mainPanel, editorPanel, mainPalette, mainClear,
+                    mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
+        }, customId -> {
+            CustomComponentDefinition definition = library.getDefinition(customId);
+            if (definition == null) {
+                return;
+            }
+            editingDefinition[0] = definition;
+            enterEditor(definition, library, activePanel, mainPanel, editorPanel, mainPalette, mainClear,
+                    mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
+        }, customId -> {
+            CustomComponentDefinition definition = library.getDefinition(customId);
+            if (definition == null) {
+                return;
+            }
+            int confirm = JOptionPane.showConfirmDialog(frame,
+                    "Delete custom component \"" + definition.getName() + "\"?",
+                    "Delete Custom Component", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) {
+                return;
+            }
+            try {
+                library.deleteDefinition(customId);
+                removeDeletedCustomComponentUsages(library, definition, mainPanel, editorPanel);
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(frame, "Failed to delete custom component.",
+                        "CircuitSim", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            mainPanel.removeCustomComponentInstances(customId);
+            if (editingDefinition[0] != null
+                    && customId.equals(editingDefinition[0].getId())) {
                 editingDefinition[0] = null;
                 configureRegistryForMain(library);
                 mainBar.refreshGroups();
                 exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
                         mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
-            });
-            CustomEditorPanel editorPanelControls = editorPanelControlsHolder[0];
-            editorPanelControls.setVisible(false);
+                return;
+            }
+            configureRegistryForMain(library);
+            mainBar.refreshGroups();
+        });
+        editorPanel.setCustomComponentHandlers(
+                () -> mainPanel.requestCreateCustomComponent(),
+                mainPanel::requestEditCustomComponent,
+                mainPanel::requestDeleteCustomComponent);
 
-            mainPanel.setCustomDefinitionsSupplier(library::getDefinitions);
-            mainPanel.setCustomDefinitionResolver(library::getDefinition);
-            editorPanel.setCustomDefinitionResolver(library::getDefinition);
-            editorPanel.setCustomDefinitionsSupplier(java.util.Collections::emptyList);
-            editorPanel.setChangeListener(() -> {
+        JLayeredPane layeredPane = buildLayeredPane(mainPanel, editorPanel, mainPalette, editorPalette,
+                mainClear, editorClear, mainBar, editorBar, tempModePanel, editorPanelControls);
+        frame.add(layeredPane, BorderLayout.CENTER);
+        frame.add(propertiesPanel, BorderLayout.EAST);
+        frame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
                 if (!editorPanel.isVisible() || editingDefinition[0] == null) {
                     return;
                 }
-                CustomComponentDefinition updated = saveEditorDefinition(editorPanel, editingDefinition[0],
-                        library, frame);
-                if (updated != null) {
-                    editingDefinition[0] = updated;
-                    mainPanel.flushAutosave();
-                }
-            });
-
-            // Load autosave only after custom-component resolvers are configured so that
-            // saved Custom component instances can be reconstructed on startup.
-            if (library.isTempMode()) {
-                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getTempAutosavePath(), true);
-            } else {
-                mainPanel.setAutosavePath(circuitsim.io.DataPaths.getAutosavePath(), true);
+                saveEditorDefinition(editorPanel, editingDefinition[0], library, frame);
             }
-
-            mainPanel.setBoardLoadTransform(state -> handleBoardLoad(state, library, tempModePanel,
-                    mainBar, mainPanel, frame));
-
-            mainPanel.setCustomComponentHandlers(() -> {
-                String name = JOptionPane.showInputDialog(frame, "New custom component name:",
-                        "New Custom Component", JOptionPane.PLAIN_MESSAGE);
-                if (name == null || name.trim().isEmpty()) {
-                    return;
-                }
-                CustomComponentDefinition definition = new CustomComponentDefinition(name.trim(),
-                        new ArrayList<>(), new ArrayList<>(),
-                        new BoardState(BoardState.CURRENT_VERSION,
-                                mainPanel.getActiveWireColor(), new ArrayList<>(), new ArrayList<>()));
-                editingDefinition[0] = definition;
-                enterEditor(definition, library, activePanel, mainPanel, editorPanel, mainPalette, mainClear,
-                        mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
-            }, customId -> {
-                CustomComponentDefinition definition = library.getDefinition(customId);
-                if (definition == null) {
-                    return;
-                }
-                editingDefinition[0] = definition;
-                enterEditor(definition, library, activePanel, mainPanel, editorPanel, mainPalette, mainClear,
-                        mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
-            }, customId -> {
-                CustomComponentDefinition definition = library.getDefinition(customId);
-                if (definition == null) {
-                    return;
-                }
-                int confirm = JOptionPane.showConfirmDialog(frame,
-                        "Delete custom component \"" + definition.getName() + "\"?",
-                        "Delete Custom Component", JOptionPane.YES_NO_OPTION);
-                if (confirm != JOptionPane.YES_OPTION) {
-                    return;
-                }
-                try {
-                    library.deleteDefinition(customId);
-                    removeDeletedCustomComponentUsages(library, definition, mainPanel, editorPanel);
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(frame, "Failed to delete custom component.",
-                            "CircuitSim", JOptionPane.ERROR_MESSAGE);
-                    return;
-                }
-                mainPanel.removeCustomComponentInstances(customId);
-                if (editingDefinition[0] != null
-                        && customId.equals(editingDefinition[0].getId())) {
-                    editingDefinition[0] = null;
-                    configureRegistryForMain(library);
-                    mainBar.refreshGroups();
-                    exitEditor(activePanel, mainPanel, editorPanel, mainPalette, mainClear,
-                            mainBar, editorPalette, editorClear, editorBar, editorPanelControlsHolder[0]);
-                    return;
-                }
-                configureRegistryForMain(library);
-                mainBar.refreshGroups();
-            });
-            editorPanel.setCustomComponentHandlers(
-                    () -> mainPanel.requestCreateCustomComponent(),
-                    mainPanel::requestEditCustomComponent,
-                    mainPanel::requestDeleteCustomComponent);
-
-            JLayeredPane layeredPane = buildLayeredPane(mainPanel, editorPanel, mainPalette, editorPalette,
-                    mainClear, editorClear, mainBar, editorBar, tempModePanel, editorPanelControls);
-            frame.add(layeredPane, BorderLayout.CENTER);
-            frame.add(propertiesPanel, BorderLayout.EAST);
-            frame.addWindowListener(new java.awt.event.WindowAdapter() {
-                @Override
-                public void windowClosing(java.awt.event.WindowEvent e) {
-                    if (!editorPanel.isVisible() || editingDefinition[0] == null) {
-                        return;
-                    }
-                    saveEditorDefinition(editorPanel, editingDefinition[0], library, frame);
-                }
-            });
-            frame.setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
-            frame.setLocationRelativeTo(null);
-            frame.setVisible(true);
-            frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
         });
+        frame.setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+        frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
     }
 
     /**
