@@ -135,6 +135,7 @@ public class CircuitPanel extends JPanel {
     private Integer placementY;
     private boolean draggingWithoutWires;
     private boolean detachedWiresForShiftDrag;
+    private final CoordinatesOverlay coordinatesOverlay = new CoordinatesOverlay();
 
     /**
      * @param propertiesPanel panel used to edit component properties
@@ -616,9 +617,18 @@ public class CircuitPanel extends JPanel {
             drawSelectionArea(g2);
         }
         g2.setTransform(originalTransform);
+        drawCoordinatesHud(g2);
         if (isShowing()) {
             repaint(33);
         }
+    }
+
+    private void drawCoordinatesHud(Graphics2D g2) {
+        int worldX = hasLastMouseWorld ? lastMouseWorldX : toWorldX(getWidth() / 2);
+        int worldY = hasLastMouseWorld ? lastMouseWorldY : toWorldY(getHeight() / 2);
+        int snappedX = Grid.snap(worldX);
+        int snappedY = Grid.snap(worldY);
+        coordinatesOverlay.draw(g2, this, propertiesPanel, snappedX, snappedY);
     }
 
     /**
