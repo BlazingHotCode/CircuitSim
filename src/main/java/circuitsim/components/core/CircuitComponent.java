@@ -133,7 +133,8 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * Defaults to the component's initial (base) width.
      */
     protected int getMinimumWidth() {
-        return baseWidth;
+        // When rotated by 90°/270° (odd quarter turns), width/height are effectively swapped.
+        return (rotationQuarterTurns % 2 != 0) ? baseHeight : baseWidth;
     }
 
     /**
@@ -141,7 +142,8 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
      * Defaults to the component's initial (base) height.
      */
     protected int getMinimumHeight() {
-        return baseHeight;
+        // When rotated by 90°/270° (odd quarter turns), width/height are effectively swapped.
+        return (rotationQuarterTurns % 2 != 0) ? baseWidth : baseHeight;
     }
 
     /**

@@ -114,20 +114,6 @@ public class VariableResistor extends CircuitComponent {
     }
 
     @Override
-    public void resizeKeepingRatio(int targetWidth, int targetHeight) {
-        // Special: allow stretching "length" for finer control; keep a stable thickness.
-        if ((getRotationQuarterTurns() % 2) == 0) {
-            // Horizontal: stretch width, fixed height.
-            width = Math.max(getMinimumWidth(), targetWidth);
-            height = getMinimumHeight();
-        } else {
-            // Vertical: stretch height, fixed width.
-            width = getMinimumWidth();
-            height = Math.max(getMinimumHeight(), targetHeight);
-        }
-    }
-
-    @Override
     protected int getMinimumWidth() {
         return (getRotationQuarterTurns() % 2) == 0 ? BASE_WIDTH : BASE_HEIGHT;
     }

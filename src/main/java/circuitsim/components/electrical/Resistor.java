@@ -89,6 +89,11 @@ public class Resistor extends TwoTerminalComponent {
         return Math.max(6, super.getConnectionDotSize());
     }
 
+    @Override
+    public boolean allowFullRotation() {
+        return true;
+    }
+
     /**
      * {@inheritDoc}
      */
