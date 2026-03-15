@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
@@ -55,6 +56,8 @@ public class CircuitSim {
             Pattern.compile("\\\"tag_name\\\"\\s*:\\s*\\\"v?([^\\\"]+)\\\"");
     private static final Pattern HTML_URL_PATTERN =
             Pattern.compile("\\\"html_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+    private static final Pattern DOWNLOAD_URL_PATTERN =
+            Pattern.compile("\\\"browser_download_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
     /**
      * Launches the CircuitSim application.
@@ -664,7 +667,8 @@ public class CircuitSim {
             if (releaseUrl == null || releaseUrl.isBlank()) {
                 releaseUrl = RELEASES_PAGE_URL;
             }
-            return new UpdateInfo(version, releaseUrl);
+            String directDownloadUrl = choosePreferredDownloadUrl(extractJsonValues(body, DOWNLOAD_URL_PATTERN));
+            return new UpdateInfo(version, releaseUrl, directDownloadUrl);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             return null;
@@ -682,6 +686,43 @@ public class CircuitSim {
             return null;
         }
         return matcher.group(1).replace("\\/", "/");
+    }
+
+    private static List<String> extractJsonValues(String body, Pattern pattern) {
+        List<String> values = new ArrayList<>();
+        if (body == null || pattern == null) {
+            return values;
+        }
+        Matcher matcher = pattern.matcher(body);
+        while (matcher.find()) {
+            values.add(matcher.group(1).replace("\\/", "/"));
+        }
+        return values;
+    }
+
+    private static String choosePreferredDownloadUrl(List<String> downloadUrls) {
+        if (downloadUrls == null || downloadUrls.isEmpty()) {
+            return null;
+        }
+        String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (osName.contains("win")) {
+            return chooseFirstMatchingUrl(downloadUrls, ".exe", ".msi", ".zip");
+        }
+        if (osName.contains("linux")) {
+            return chooseFirstMatchingUrl(downloadUrls, ".deb", ".rpm", ".tar.gz", ".flatpak");
+        }
+        return chooseFirstMatchingUrl(downloadUrls, ".jar", ".zip", ".tar.gz", ".exe", ".deb", ".rpm");
+    }
+
+    private static String chooseFirstMatchingUrl(List<String> downloadUrls, String... suffixes) {
+        for (String suffix : suffixes) {
+            for (String url : downloadUrls) {
+                if (url.toLowerCase(Locale.ROOT).endsWith(suffix)) {
+                    return url;
+                }
+            }
+        }
+        return downloadUrls.getFirst();
     }
 
     private static boolean isNewerVersion(String candidateVersion, String currentVersion) {
@@ -717,9 +758,7 @@ public class CircuitSim {
     }
 
     private static void showUpdateDialog(JFrame frame, String currentVersion, UpdateInfo latestRelease) {
-        Object[] options = canOpenBrowser()
-                ? new Object[] { "Open Release", "Later" }
-                : new Object[] { "OK" };
+        Object[] options = buildUpdateOptions(latestRelease);
         int choice = JOptionPane.showOptionDialog(frame,
                 "A newer version of CircuitSim is available.\n\n"
                         + "Installed: " + currentVersion + "\n"
@@ -730,9 +769,21 @@ public class CircuitSim {
                 null,
                 options,
                 options[0]);
-        if (choice == 0 && canOpenBrowser()) {
+        if (choice == 0 && latestRelease.downloadUrl() != null && canOpenBrowser()) {
+            openReleasePage(latestRelease.downloadUrl());
+        } else if ((choice == 0 && latestRelease.downloadUrl() == null || choice == 1) && canOpenBrowser()) {
             openReleasePage(latestRelease.url());
         }
+    }
+
+    private static Object[] buildUpdateOptions(UpdateInfo latestRelease) {
+        if (!canOpenBrowser()) {
+            return new Object[] { "OK" };
+        }
+        if (latestRelease.downloadUrl() != null) {
+            return new Object[] { "Download", "Open Release", "Later" };
+        }
+        return new Object[] { "Open Release", "Later" };
     }
 
     private static boolean canOpenBrowser() {
@@ -749,6 +800,6 @@ public class CircuitSim {
         }
     }
 
-    private record UpdateInfo(String version, String url) {
+    private record UpdateInfo(String version, String url, String downloadUrl) {
     }
 }
