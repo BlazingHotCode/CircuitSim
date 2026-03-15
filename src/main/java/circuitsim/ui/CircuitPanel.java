@@ -1433,8 +1433,12 @@ public class CircuitPanel extends JPanel {
                 internalResistance = battery.getInternalResistance();
             }
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
-            case circuitsim.components.electrical.PowerUser powerUser -> powerWatt = powerUser.getTargetPowerWatt();
+            case circuitsim.components.electrical.PowerUser powerUser -> {
+                voltage = powerUser.getTargetVoltage();
+                powerWatt = powerUser.getTargetPowerWatt();
+            }
             case circuitsim.components.electrical.LightBulb lightBulb -> {
+                voltage = lightBulb.getRatedVoltage();
                 powerWatt = lightBulb.getRatedPowerWatt();
                 burnedOut = lightBulb.isBurnedOut();
             }
@@ -1556,11 +1560,17 @@ public class CircuitPanel extends JPanel {
                 }
             }
             case circuitsim.components.electrical.PowerUser powerUser -> {
+                if (state.getVoltage() != null) {
+                    powerUser.setTargetVoltage(state.getVoltage());
+                }
                 if (state.getPowerWatt() != null) {
                     powerUser.setTargetPowerWatt(state.getPowerWatt());
                 }
             }
             case circuitsim.components.electrical.LightBulb lightBulb -> {
+                if (state.getVoltage() != null) {
+                    lightBulb.setRatedVoltage(state.getVoltage());
+                }
                 if (state.getPowerWatt() != null) {
                     lightBulb.setRatedPowerWatt(state.getPowerWatt());
                 }

@@ -20,11 +20,13 @@ public class LightBulb extends TwoTerminalComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 2;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
     private static final float DEFAULT_RATED_POWER_WATT = 5f;
+    private static final float DEFAULT_RATED_VOLTAGE = 3f;
 
     private static final float BURNOUT_MULTIPLIER = 2.0f;
     private static final int BURNOUT_TICKS = 30;
 
     private float ratedPowerWatt;
+    private float ratedVoltage;
     private boolean burnedOut;
     private int burnoutCounter;
 
@@ -38,7 +40,7 @@ public class LightBulb extends TwoTerminalComponent {
      * @param y world Y coordinate
      */
     public LightBulb(int x, int y) {
-        this(x, y, DEFAULT_RATED_POWER_WATT);
+        this(x, y, DEFAULT_RATED_POWER_WATT, DEFAULT_RATED_VOLTAGE);
     }
 
     /**
@@ -47,11 +49,23 @@ public class LightBulb extends TwoTerminalComponent {
      * @param ratedPowerWatt rated wattage
      */
     public LightBulb(int x, int y, float ratedPowerWatt) {
+        this(x, y, ratedPowerWatt, DEFAULT_RATED_VOLTAGE);
+    }
+
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     * @param ratedPowerWatt rated wattage
+     * @param ratedVoltage rated voltage
+     */
+    public LightBulb(int x, int y, float ratedPowerWatt, float ratedVoltage) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH);
         this.ratedPowerWatt = ratedPowerWatt;
+        this.ratedVoltage = ratedVoltage;
         addProperty(new FloatProperty("Rated Power (W)", this::getRatedPowerWatt, this::setRatedPowerWatt, true));
+        addProperty(new FloatProperty("Rated Voltage (V)", this::getRatedVoltage, this::setRatedVoltage, true));
         addProperty(new BooleanProperty("Burned Out", this::isBurnedOut, this::setBurnedOut, true));
-        addProperty(new ComputedFloatProperty("Voltage (V)", this::getComputedVoltage, false));
+        addProperty(new ComputedFloatProperty("Actual Voltage (V)", this::getComputedVoltage, false));
         addProperty(new ComputedFloatProperty("Ampere (A)", this::getComputedAmpere, false));
         addProperty(new ComputedFloatProperty("Actual Power (W)", this::getComputedPowerWatt, false));
         addProperty(new ComputedFloatProperty("Effective Resistance (Ω)", this::getComputedResistance, false));
@@ -63,6 +77,14 @@ public class LightBulb extends TwoTerminalComponent {
 
     public void setRatedPowerWatt(float ratedPowerWatt) {
         this.ratedPowerWatt = ratedPowerWatt;
+    }
+
+    public float getRatedVoltage() {
+        return ratedVoltage;
+    }
+
+    public void setRatedVoltage(float ratedVoltage) {
+        this.ratedVoltage = ratedVoltage;
     }
 
     public boolean isBurnedOut() {

@@ -34,8 +34,6 @@ public final class CircuitPhysics {
     private static final double SHORT_THRESHOLD = 1e-6;
     private static final double LOGIC_INPUT_RESISTANCE = 2e4;
     private static final double POWER_USER_MAX_RESISTANCE = 1e12;
-    private static final double POWER_USER_INITIAL_VOLTAGE_GUESS = 1.0;
-    private static final double LIGHT_BULB_NOMINAL_VOLTAGE = 3.0;
 
     /**
      * Prevent instantiation.
@@ -1520,7 +1518,7 @@ public final class CircuitPhysics {
         if (powerUser == null) {
             return POWER_USER_MAX_RESISTANCE;
         }
-        return getConstantPowerResistance(powerUser.getTargetPowerWatt(), powerUser.getComputedVoltage());
+        return getRatedLoadResistance(powerUser.getTargetPowerWatt(), powerUser.getTargetVoltage());
     }
 
     private static double getLightBulbResistance(LightBulb lightBulb) {
@@ -1530,25 +1528,17 @@ public final class CircuitPhysics {
         if (lightBulb.isBurnedOut()) {
             return POWER_USER_MAX_RESISTANCE;
         }
-        double power = lightBulb.getRatedPowerWatt();
-        if (!(power > 0.0)) {
-            return POWER_USER_MAX_RESISTANCE;
-        }
-        double resistance = (LIGHT_BULB_NOMINAL_VOLTAGE * LIGHT_BULB_NOMINAL_VOLTAGE) / power;
-        if (Double.isNaN(resistance) || Double.isInfinite(resistance)) {
-            resistance = POWER_USER_MAX_RESISTANCE;
-        }
-        return Math.max(MIN_RESISTANCE, Math.min(POWER_USER_MAX_RESISTANCE, resistance));
+        return getRatedLoadResistance(lightBulb.getRatedPowerWatt(), lightBulb.getRatedVoltage());
     }
 
-    private static double getConstantPowerResistance(float targetPowerWatt, float lastComputedVoltage) {
+    private static double getRatedLoadResistance(float targetPowerWatt, float targetVoltage) {
         double power = targetPowerWatt;
         if (!(power > 0.0)) {
             return POWER_USER_MAX_RESISTANCE;
         }
-        double voltage = Math.abs(lastComputedVoltage);
-        if (voltage < 1e-6) {
-            voltage = POWER_USER_INITIAL_VOLTAGE_GUESS;
+        double voltage = Math.abs(targetVoltage);
+        if (!(voltage > 0.0)) {
+            return POWER_USER_MAX_RESISTANCE;
         }
         double resistance = (voltage * voltage) / power;
         if (Double.isNaN(resistance) || Double.isInfinite(resistance)) {

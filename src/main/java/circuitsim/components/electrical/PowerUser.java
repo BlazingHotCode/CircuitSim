@@ -10,15 +10,17 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 
 /**
- * Constant-power load component.
+ * Load component rated by power and voltage.
  */
 @BuiltinComponent(group = "Passive", paletteName = "Power User", groupOrder = 30, paletteOrder = 20)
 public class PowerUser extends TwoTerminalComponent {
     private static final int DEFAULT_WIDTH = Grid.SIZE * 2;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
     private static final float DEFAULT_POWER_WATT = 1f;
+    private static final float DEFAULT_VOLTAGE = 1.5f;
 
     private float targetPowerWatt;
+    private float targetVoltage;
     private float computedVoltage;
     private float computedAmpere;
     private float computedPowerWatt;
@@ -29,7 +31,7 @@ public class PowerUser extends TwoTerminalComponent {
      * @param y world Y coordinate
      */
     public PowerUser(int x, int y) {
-        this(x, y, DEFAULT_POWER_WATT);
+        this(x, y, DEFAULT_POWER_WATT, DEFAULT_VOLTAGE);
     }
 
     /**
@@ -38,10 +40,22 @@ public class PowerUser extends TwoTerminalComponent {
      * @param targetPowerWatt desired power draw in watts
      */
     public PowerUser(int x, int y, float targetPowerWatt) {
+        this(x, y, targetPowerWatt, DEFAULT_VOLTAGE);
+    }
+
+    /**
+     * @param x world X coordinate
+     * @param y world Y coordinate
+     * @param targetPowerWatt desired power draw in watts
+     * @param targetVoltage rated voltage in volts
+     */
+    public PowerUser(int x, int y, float targetPowerWatt, float targetVoltage) {
         super(x, y, DEFAULT_HEIGHT, DEFAULT_WIDTH);
         this.targetPowerWatt = targetPowerWatt;
+        this.targetVoltage = targetVoltage;
         addProperty(new FloatProperty("Power (W)", this::getTargetPowerWatt, this::setTargetPowerWatt, true));
-        addProperty(new ComputedFloatProperty("Voltage (V)", this::getComputedVoltage, false));
+        addProperty(new FloatProperty("Voltage (V)", this::getTargetVoltage, this::setTargetVoltage, true));
+        addProperty(new ComputedFloatProperty("Actual Voltage (V)", this::getComputedVoltage, false));
         addProperty(new ComputedFloatProperty("Ampere (A)", this::getComputedAmpere, false));
         addProperty(new ComputedFloatProperty("Actual Power (W)", this::getComputedPowerWatt, false));
         addProperty(new ComputedFloatProperty("Effective Resistance (Ω)", this::getComputedResistance, false));
@@ -59,6 +73,14 @@ public class PowerUser extends TwoTerminalComponent {
      */
     public void setTargetPowerWatt(float targetPowerWatt) {
         this.targetPowerWatt = targetPowerWatt;
+    }
+
+    public float getTargetVoltage() {
+        return targetVoltage;
+    }
+
+    public void setTargetVoltage(float targetVoltage) {
+        this.targetVoltage = targetVoltage;
     }
 
     public float getComputedVoltage() {
