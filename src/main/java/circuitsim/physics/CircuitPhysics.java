@@ -462,11 +462,14 @@ public final class CircuitPhysics {
 
             java.util.Set<Integer> activeNodes = new java.util.HashSet<>();
             double[] nodeCurrentHints = new double[pruned.nodeCount];
+            double[] nodeVoltageHints = new double[pruned.nodeCount];
             for (Edge edge : pruned.edges) {
                 int a = edge.aIndex;
                 int b = edge.bIndex;
                 double va = nodeVoltages[a];
                 double vb = nodeVoltages[b];
+                nodeVoltageHints[a] = Math.max(nodeVoltageHints[a], Math.abs(va));
+                nodeVoltageHints[b] = Math.max(nodeVoltageHints[b], Math.abs(vb));
                 double voltage = va - vb;
                 double current = getEdgeCurrent(edge, voltage, stableTimeStep);
                 if (Math.abs(current) > 0.0001) {
@@ -474,7 +477,6 @@ public final class CircuitPhysics {
                     activeNodes.add(b);
                 }
                 if (edge.wire != null) {
-                    edge.wire.setComputedVoltage((float) Math.abs(voltage));
                     continue;
                 }
                 double absCurrent = Math.abs(current);
@@ -524,12 +526,34 @@ public final class CircuitPhysics {
                     edge.circuitSwitch.setComputedAmpere((float) absCurrent);
                 }
             }
+            boolean changed;
+            do {
+                changed = false;
+                for (Edge edge : pruned.edges) {
+                    if (edge.wire == null) {
+                        continue;
+                    }
+                    int a = edge.aIndex;
+                    int b = edge.bIndex;
+                    double propagatedCurrent = Math.max(nodeCurrentHints[a], nodeCurrentHints[b]);
+                    if (propagatedCurrent > nodeCurrentHints[a]) {
+                        nodeCurrentHints[a] = propagatedCurrent;
+                        changed = true;
+                    }
+                    if (propagatedCurrent > nodeCurrentHints[b]) {
+                        nodeCurrentHints[b] = propagatedCurrent;
+                        changed = true;
+                    }
+                }
+            } while (changed);
             for (Edge edge : pruned.edges) {
                 if (edge.wire == null) {
                     continue;
                 }
                 double hintedCurrent = Math.max(nodeCurrentHints[edge.aIndex], nodeCurrentHints[edge.bIndex]);
+                double hintedVoltage = Math.max(nodeVoltageHints[edge.aIndex], nodeVoltageHints[edge.bIndex]);
                 edge.wire.setComputedAmpere((float) hintedCurrent);
+                edge.wire.setComputedVoltage((float) hintedVoltage);
             }
 
             List<Voltmeter> componentVoltmeters = voltmetersByComponent.get(cid);

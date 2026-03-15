@@ -17,6 +17,7 @@ public class Wire {
     private WireNode start;
     private WireNode end;
     private static final float STROKE_WIDTH = 3f;
+    private static final float CURRENT_HIGHLIGHT_THRESHOLD = 0.0001f;
     private static final DecimalFormat VALUE_FORMAT =
             new DecimalFormat("0.##", DecimalFormatSymbols.getInstance(Locale.US));
     private boolean showData = false;
@@ -317,7 +318,7 @@ public class Wire {
      * Draws a powered highlight segment at the middle of the wire.
      */
     private void drawPoweredHighlight(Graphics2D g2, int startX, int startY, int endX, int endY) {
-        if (computedAmpere <= 0.0001f && !logicPowered) {
+        if (computedAmpere <= CURRENT_HIGHLIGHT_THRESHOLD && !logicPowered) {
             return;
         }
         Color highlight = color == WireColor.RED
