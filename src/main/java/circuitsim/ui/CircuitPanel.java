@@ -1526,7 +1526,10 @@ public class CircuitPanel extends JPanel {
                 wiperPosition = slider.getWiperPosition();
             }
             case circuitsim.components.electrical.Switch toggle -> closed = toggle.isClosed();
-            case circuitsim.components.electrical.Source source -> closed = source.isActive();
+            case circuitsim.components.electrical.Source source -> {
+                voltage = source.getVoltage();
+                closed = source.isActive();
+            }
             default -> {
             }
         }
@@ -1691,6 +1694,9 @@ public class CircuitPanel extends JPanel {
                 }
             }
             case circuitsim.components.electrical.Source source -> {
+                if (state.getVoltage() != null) {
+                    source.setVoltage(state.getVoltage());
+                }
                 if (state.getClosed() != null) {
                     source.setActive(state.getClosed());
                 }

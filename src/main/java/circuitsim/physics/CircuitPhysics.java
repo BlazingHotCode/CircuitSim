@@ -1201,7 +1201,7 @@ public final class CircuitPhysics {
             ConnectionPoint point = points.get(0);
             int posX = source.getConnectionPointWorldX(point);
             int posY = source.getConnectionPointWorldY(point);
-            batteries.add(new InputBatteryAdapter(posX, posY, groundPoint.x, groundPoint.y));
+            batteries.add(new InputBatteryAdapter(posX, posY, groundPoint.x, groundPoint.y, source.getVoltage()));
         }
     }
 
@@ -1301,6 +1301,14 @@ public final class CircuitPhysics {
 
         private InputBatteryAdapter(int posX, int posY, int negX, int negY) {
             super(0, 0, INPUT_VOLTAGE, INPUT_RESISTANCE);
+            this.posX = posX;
+            this.posY = posY;
+            this.negX = negX;
+            this.negY = negY;
+        }
+
+        private InputBatteryAdapter(int posX, int posY, int negX, int negY, float voltage) {
+            super(0, 0, voltage, INPUT_RESISTANCE);
             this.posX = posX;
             this.posY = posY;
             this.negX = negX;

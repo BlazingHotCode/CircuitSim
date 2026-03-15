@@ -13,13 +13,24 @@ import java.awt.Graphics2D;
 @BuiltinComponent(group = "Sources", groupOrder = 10, paletteOrder = 20)
 public class Source extends SingleTerminalComponent implements SwitchLike {
     private static final int DEFAULT_SIZE = Grid.SIZE * 2;
+    private static final float DEFAULT_VOLTAGE = 5f;
     private boolean active;
+    private float voltage = DEFAULT_VOLTAGE;
 
     public Source(int x, int y) {
         super(x, y, DEFAULT_SIZE, DEFAULT_SIZE, 1f, 0.5f, false);
         setDisplayName("Source");
         addProperty(new StringProperty("Name", this::getDisplayName, this::setDisplayName, false, true));
         addProperty(new BooleanProperty("Active", this::isActive, this::setActive, false));
+        addProperty(new FloatProperty("Voltage (V)", this::getVoltage, this::setVoltage, true));
+    }
+
+    public float getVoltage() {
+        return voltage;
+    }
+
+    public void setVoltage(float voltage) {
+        this.voltage = voltage;
     }
 
     /**
