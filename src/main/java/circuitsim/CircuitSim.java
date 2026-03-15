@@ -16,15 +16,23 @@ import circuitsim.ui.CustomEditorPanel;
 import circuitsim.ui.TempModePanel;
 import circuitsim.ui.WirePalettePanel;
 import java.awt.BorderLayout;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.Image;
 import java.awt.Taskbar;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.io.InputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JLayeredPane;
@@ -39,6 +47,14 @@ public class CircuitSim {
     private static final int WINDOW_HEIGHT = 600;
     private static final int PANEL_PADDING = 8;
     private static final String APP_ICON_RESOURCE = "/circuitsim/icon.png";
+    private static final String RELEASES_LATEST_API_URL =
+            "https://api.github.com/repos/BlazingHotCode/CircuitSim/releases/latest";
+    private static final String RELEASES_PAGE_URL =
+            "https://github.com/BlazingHotCode/CircuitSim/releases/latest";
+    private static final Pattern TAG_NAME_PATTERN =
+            Pattern.compile("\\\"tag_name\\\"\\s*:\\s*\\\"v?([^\\\"]+)\\\"");
+    private static final Pattern HTML_URL_PATTERN =
+            Pattern.compile("\\\"html_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
 
     /**
      * Launches the CircuitSim application.
@@ -225,6 +241,7 @@ public class CircuitSim {
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
         frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
+        checkForUpdates(frame);
     }
 
     /**
@@ -597,5 +614,141 @@ public class CircuitSim {
                     shell.getConnectionPointWorldY(point)));
         }
         return points;
+    }
+
+    private static void checkForUpdates(JFrame frame) {
+        String currentVersion = getCurrentVersion();
+        if (currentVersion == null || currentVersion.isBlank()) {
+            return;
+        }
+        Thread updateThread = new Thread(() -> {
+            UpdateInfo latestRelease = fetchLatestRelease();
+            if (latestRelease == null || !isNewerVersion(latestRelease.version(), currentVersion)) {
+                return;
+            }
+            SwingUtilities.invokeLater(() -> showUpdateDialog(frame, currentVersion, latestRelease));
+        }, "circuitsim-update-check");
+        updateThread.setDaemon(true);
+        updateThread.start();
+    }
+
+    private static String getCurrentVersion() {
+        Package appPackage = CircuitSim.class.getPackage();
+        if (appPackage == null) {
+            return null;
+        }
+        return appPackage.getImplementationVersion();
+    }
+
+    private static UpdateInfo fetchLatestRelease() {
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(4))
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASES_LATEST_API_URL))
+                    .timeout(Duration.ofSeconds(6))
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "CircuitSim")
+                    .GET()
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return null;
+            }
+            String body = response.body();
+            String version = extractJsonValue(body, TAG_NAME_PATTERN);
+            if (version == null || version.isBlank()) {
+                return null;
+            }
+            String releaseUrl = extractJsonValue(body, HTML_URL_PATTERN);
+            if (releaseUrl == null || releaseUrl.isBlank()) {
+                releaseUrl = RELEASES_PAGE_URL;
+            }
+            return new UpdateInfo(version, releaseUrl);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (IOException | RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private static String extractJsonValue(String body, Pattern pattern) {
+        if (body == null || pattern == null) {
+            return null;
+        }
+        Matcher matcher = pattern.matcher(body);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group(1).replace("\\/", "/");
+    }
+
+    private static boolean isNewerVersion(String candidateVersion, String currentVersion) {
+        List<Integer> candidateParts = parseVersionParts(candidateVersion);
+        List<Integer> currentParts = parseVersionParts(currentVersion);
+        int length = Math.max(candidateParts.size(), currentParts.size());
+        for (int i = 0; i < length; i++) {
+            int candidatePart = i < candidateParts.size() ? candidateParts.get(i) : 0;
+            int currentPart = i < currentParts.size() ? currentParts.get(i) : 0;
+            if (candidatePart != currentPart) {
+                return candidatePart > currentPart;
+            }
+        }
+        return false;
+    }
+
+    private static List<Integer> parseVersionParts(String version) {
+        List<Integer> parts = new ArrayList<>();
+        if (version == null || version.isBlank()) {
+            return parts;
+        }
+        for (String token : version.split("[^0-9]+")) {
+            if (token.isEmpty()) {
+                continue;
+            }
+            try {
+                parts.add(Integer.parseInt(token));
+            } catch (NumberFormatException ex) {
+                return new ArrayList<>();
+            }
+        }
+        return parts;
+    }
+
+    private static void showUpdateDialog(JFrame frame, String currentVersion, UpdateInfo latestRelease) {
+        Object[] options = canOpenBrowser()
+                ? new Object[] { "Open Release", "Later" }
+                : new Object[] { "OK" };
+        int choice = JOptionPane.showOptionDialog(frame,
+                "A newer version of CircuitSim is available.\n\n"
+                        + "Installed: " + currentVersion + "\n"
+                        + "Latest: " + latestRelease.version(),
+                "Update Available",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.INFORMATION_MESSAGE,
+                null,
+                options,
+                options[0]);
+        if (choice == 0 && canOpenBrowser()) {
+            openReleasePage(latestRelease.url());
+        }
+    }
+
+    private static boolean canOpenBrowser() {
+        return Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE);
+    }
+
+    private static void openReleasePage(String releaseUrl) {
+        if (releaseUrl == null || releaseUrl.isBlank() || !canOpenBrowser()) {
+            return;
+        }
+        try {
+            Desktop.getDesktop().browse(URI.create(releaseUrl));
+        } catch (IOException | IllegalArgumentException ex) {
+        }
+    }
+
+    private record UpdateInfo(String version, String url) {
     }
 }
