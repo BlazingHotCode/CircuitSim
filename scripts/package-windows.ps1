@@ -26,6 +26,7 @@ $mainClass = 'circuitsim.CircuitSim'
 $vendor = 'BlazingHotCode'
 $copyright = 'Copyright (c) 2026 BlazingHotCode'
 $upgradeUuid = '5c0f7a4f-8b9c-4d22-94b8-5d6c4c7e7c11'
+$menuGroup = 'BlazingHotCode'
 
 if ([string]::IsNullOrWhiteSpace($DestDir)) {
     $DestDir = $defaultDestDir
@@ -284,7 +285,7 @@ If you only want the portable build, run:
 "@
     }
 
-    & $jpackagePath --type exe --win-shortcut --win-menu --win-upgrade-uuid $upgradeUuid @commonArgs
+    & $jpackagePath --type exe --win-shortcut --win-menu --win-menu-group $menuGroup --win-upgrade-uuid $upgradeUuid @commonArgs
     if ($LASTEXITCODE -ne 0) {
         throw 'jpackage exe failed'
     }
