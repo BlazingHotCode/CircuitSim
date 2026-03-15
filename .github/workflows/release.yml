@@ -65,11 +65,29 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build versioned jar asset
+        run: |
+          chmod +x ./scripts/build-jar.sh
+          ./scripts/build-jar.sh
+
       - name: Upload release body
         uses: actions/upload-artifact@v4
         with:
           name: release-body
           path: release-body.md
+          if-no-files-found: error
+
+      - name: Upload jar asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-jar
+          path: dist/CircuitSim-*.jar
           if-no-files-found: error
 
   windows:
@@ -191,6 +209,12 @@ jobs:
           name: release-linux
           path: release-assets/linux
 
+      - name: Download jar asset
+        uses: actions/download-artifact@v4
+        with:
+          name: release-jar
+          path: release-assets/jar
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -200,4 +224,5 @@ jobs:
           files: |
             release-assets/windows/*
             release-assets/linux/*
+            release-assets/jar/*
           fail_on_unmatched_files: true

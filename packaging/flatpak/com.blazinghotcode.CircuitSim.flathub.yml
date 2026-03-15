@@ -1,0 +1,36 @@
+app-id: com.blazinghotcode.CircuitSim
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+command: circuitsim
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+modules:
+  - name: circuitsim
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 circuitsim.sh /app/bin/circuitsim
+      - install -Dm644 CircuitSim.jar /app/lib/CircuitSim.jar
+      - install -Dm644 com.blazinghotcode.CircuitSim.desktop /app/share/applications/com.blazinghotcode.CircuitSim.desktop
+      - install -Dm644 com.blazinghotcode.CircuitSim.metainfo.xml /app/share/metainfo/com.blazinghotcode.CircuitSim.metainfo.xml
+      - install -Dm644 com.blazinghotcode.CircuitSim.png /app/share/icons/hicolor/256x256/apps/com.blazinghotcode.CircuitSim.png
+    sources:
+      - type: file
+        url: https://github.com/BlazingHotCode/CircuitSim/releases/download/v1.1.4/CircuitSim-1.1.4.jar
+        sha256: 693be24ea0cf517ac3003c633d117b25be42e3322f14c1a7e6d8d9016bc758ba
+        dest-filename: CircuitSim.jar
+      - type: file
+        path: ./circuitsim.sh
+      - type: file
+        path: ./com.blazinghotcode.CircuitSim.desktop
+      - type: file
+        path: ./com.blazinghotcode.CircuitSim.metainfo.xml
+      - type: file
+        path: ../circuitsim.png
+        dest-filename: com.blazinghotcode.CircuitSim.png
