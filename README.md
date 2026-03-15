@@ -69,6 +69,7 @@ CircuitSim can be packaged for Windows and Linux with a bundled Java runtime so 
 
 Windows installer builds (`--type exe`) require WiX Toolset v3.x on the packaging machine so `candle.exe` and `light.exe` are available on `PATH`.
 The packaged launcher uses `packaging/circuitsim.ico` when that asset is present.
+The installer also uses a stable Windows upgrade UUID, so newer installers can replace older installs instead of requiring a manual uninstall. Bump `build/version.txt` before creating the new installer.
 
 Build an app image plus installer `.exe`:
 
