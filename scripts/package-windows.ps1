@@ -254,7 +254,8 @@ $commonArgs = @(
     '--description', 'Interactive, real-time circuit simulator',
     '--copyright', $copyright,
     '--add-modules', $modules,
-    '--java-options', '-Dfile.encoding=UTF-8'
+    '--java-options', '-Dfile.encoding=UTF-8',
+    '--java-options', "-Dcircuitsim.appVersion=$version"
 )
 
 $iconPath = Join-Path $packagingDir 'circuitsim.ico'

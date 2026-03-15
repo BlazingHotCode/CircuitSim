@@ -14,6 +14,7 @@ import circuitsim.ui.ComponentBarPanel;
 import circuitsim.ui.ComponentPropertiesPanel;
 import circuitsim.ui.CustomEditorPanel;
 import circuitsim.ui.TempModePanel;
+import circuitsim.ui.UpdateStatusPanel;
 import circuitsim.ui.WirePalettePanel;
 import java.awt.BorderLayout;
 import java.awt.Desktop;
@@ -100,6 +101,10 @@ public class CircuitSim {
                 editorPanel::setActiveWireColor);
         ClearBoardPanel mainClear = new ClearBoardPanel(mainPanel::requestClearBoard);
         ClearBoardPanel editorClear = new ClearBoardPanel(editorPanel::requestClearBoard);
+        String currentVersion = getCurrentVersion();
+        UpdateStatusPanel updateStatusPanel = new UpdateStatusPanel(() ->
+                handleUpdateStatusClick(frame, currentVersion, fetchLatestRelease()));
+        updateStatusPanel.setVersionText(currentVersion, "checking...");
 
         TempModePanel[] tempModePanelHolder = new TempModePanel[1];
         tempModePanelHolder[0] = new TempModePanel(() -> {
@@ -228,7 +233,8 @@ public class CircuitSim {
                 mainPanel::requestDeleteCustomComponent);
 
         JLayeredPane layeredPane = buildLayeredPane(mainPanel, editorPanel, mainPalette, editorPalette,
-                mainClear, editorClear, mainBar, editorBar, tempModePanel, editorPanelControls);
+                mainClear, editorClear, mainBar, editorBar, tempModePanel, editorPanelControls,
+                updateStatusPanel);
         frame.add(layeredPane, BorderLayout.CENTER);
         frame.add(propertiesPanel, BorderLayout.EAST);
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
@@ -244,7 +250,7 @@ public class CircuitSim {
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
         frame.setExtendedState(frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
-        checkForUpdates(frame);
+        checkForUpdates(frame, updateStatusPanel, currentVersion);
     }
 
     /**
@@ -293,11 +299,12 @@ public class CircuitSim {
                                                  WirePalettePanel mainPalette,
                                                  WirePalettePanel editorPalette,
                                                  ClearBoardPanel mainClear,
-                                                 ClearBoardPanel editorClear,
-                                                 ComponentBarPanel mainBar,
-                                                 ComponentBarPanel editorBar,
-                                                 TempModePanel tempModePanel,
-                                                 CustomEditorPanel editorPanelControls) {
+                                                  ClearBoardPanel editorClear,
+                                                  ComponentBarPanel mainBar,
+                                                  ComponentBarPanel editorBar,
+                                                  TempModePanel tempModePanel,
+                                                  CustomEditorPanel editorPanelControls,
+                                                  UpdateStatusPanel updateStatusPanel) {
         JLayeredPane layeredPane = new JLayeredPane();
         layeredPane.add(mainPanel, Integer.valueOf(0));
         if (editorPanel != null) {
@@ -325,11 +332,15 @@ public class CircuitSim {
         if (editorPanelControls != null) {
             layeredPane.add(editorPanelControls, Integer.valueOf(3));
         }
+        if (updateStatusPanel != null) {
+            layeredPane.add(updateStatusPanel, Integer.valueOf(3));
+        }
         layeredPane.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
                 layoutFloatingPanels(layeredPane, mainPanel, editorPanel, mainPalette, editorPalette,
-                        mainClear, editorClear, mainBar, editorBar, tempModePanel, editorPanelControls);
+                        mainClear, editorClear, mainBar, editorBar, tempModePanel, editorPanelControls,
+                        updateStatusPanel);
             }
         });
         return layeredPane;
@@ -344,11 +355,12 @@ public class CircuitSim {
                                              WirePalettePanel mainPalette,
                                              WirePalettePanel editorPalette,
                                              ClearBoardPanel mainClear,
-                                             ClearBoardPanel editorClear,
-                                             ComponentBarPanel mainBar,
-                                             ComponentBarPanel editorBar,
-                                             TempModePanel tempModePanel,
-                                             CustomEditorPanel editorPanelControls) {
+                                              ClearBoardPanel editorClear,
+                                              ComponentBarPanel mainBar,
+                                              ComponentBarPanel editorBar,
+                                              TempModePanel tempModePanel,
+                                              CustomEditorPanel editorPanelControls,
+                                              UpdateStatusPanel updateStatusPanel) {
         int width = layeredPane.getWidth();
         int height = layeredPane.getHeight();
         mainPanel.setBounds(0, 0, width, height);
@@ -385,6 +397,15 @@ public class CircuitSim {
             Dimension tempSize = tempModePanel.getPreferredSize();
             tempModePanel.setBounds(width - tempSize.width - PANEL_PADDING, PANEL_PADDING,
                     tempSize.width, tempSize.height);
+        }
+        if (updateStatusPanel != null) {
+            Dimension updateSize = updateStatusPanel.getPreferredSize();
+            int updateRight = width - PANEL_PADDING;
+            if (tempModePanel != null && tempModePanel.isVisible()) {
+                updateRight -= tempModePanel.getWidth() + PANEL_PADDING;
+            }
+            updateStatusPanel.setBounds(updateRight - updateSize.width, PANEL_PADDING,
+                    updateSize.width, updateSize.height);
         }
         if (editorPanelControls != null) {
             Dimension editorSize = editorPanelControls.getPreferredSize();
@@ -619,23 +640,40 @@ public class CircuitSim {
         return points;
     }
 
-    private static void checkForUpdates(JFrame frame) {
-        String currentVersion = getCurrentVersion();
+    private static void checkForUpdates(JFrame frame, UpdateStatusPanel updateStatusPanel, String currentVersion) {
         if (currentVersion == null || currentVersion.isBlank()) {
+            if (updateStatusPanel != null) {
+                updateStatusPanel.setVisible(false);
+            }
             return;
         }
         Thread updateThread = new Thread(() -> {
             UpdateInfo latestRelease = fetchLatestRelease();
-            if (latestRelease == null || !isNewerVersion(latestRelease.version(), currentVersion)) {
-                return;
-            }
-            SwingUtilities.invokeLater(() -> showUpdateDialog(frame, currentVersion, latestRelease));
+            SwingUtilities.invokeLater(() -> applyLatestRelease(frame, updateStatusPanel, currentVersion, latestRelease));
         }, "circuitsim-update-check");
         updateThread.setDaemon(true);
         updateThread.start();
     }
 
+    private static void applyLatestRelease(JFrame frame, UpdateStatusPanel updateStatusPanel,
+                                           String currentVersion, UpdateInfo latestRelease) {
+        if (updateStatusPanel != null) {
+            if (latestRelease == null) {
+                updateStatusPanel.setUnknownLatest(currentVersion);
+            } else {
+                updateStatusPanel.setVersionText(currentVersion, latestRelease.version());
+            }
+        }
+        if (latestRelease != null && isNewerVersion(latestRelease.version(), currentVersion)) {
+            showUpdateDialog(frame, currentVersion, latestRelease);
+        }
+    }
+
     private static String getCurrentVersion() {
+        String configuredVersion = System.getProperty("circuitsim.appVersion");
+        if (configuredVersion != null && !configuredVersion.isBlank()) {
+            return configuredVersion;
+        }
         Package appPackage = CircuitSim.class.getPackage();
         if (appPackage == null) {
             return null;
@@ -774,6 +812,21 @@ public class CircuitSim {
         } else if ((choice == 0 && latestRelease.downloadUrl() == null || choice == 1) && canOpenBrowser()) {
             openReleasePage(latestRelease.url());
         }
+    }
+
+    private static void handleUpdateStatusClick(JFrame frame, String currentVersion, UpdateInfo latestRelease) {
+        if (latestRelease != null && isNewerVersion(latestRelease.version(), currentVersion)) {
+            showUpdateDialog(frame, currentVersion, latestRelease);
+            return;
+        }
+        if (latestRelease != null && canOpenBrowser()) {
+            openReleasePage(latestRelease.url());
+            return;
+        }
+        JOptionPane.showMessageDialog(frame,
+                "Installed: " + currentVersion + "\nLatest: unavailable",
+                "Version Status",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private static Object[] buildUpdateOptions(UpdateInfo latestRelease) {

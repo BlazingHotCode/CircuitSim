@@ -165,6 +165,7 @@ COMMON_ARGS=(
     --copyright "$COPYRIGHT"
     --add-modules "$MODULES"
     --java-options "-Dfile.encoding=UTF-8"
+    --java-options "-Dcircuitsim.appVersion=$VERSION"
 )
 
 ICON_PATH="$PACKAGING_DIR/circuitsim.png"
