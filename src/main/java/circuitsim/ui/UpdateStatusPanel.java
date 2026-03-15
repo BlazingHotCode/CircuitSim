@@ -35,13 +35,24 @@ public class UpdateStatusPanel extends JPanel {
         String current = normalizeVersion(currentVersion, "?");
         String latest = normalizeVersion(latestVersion, "checking...");
         button.setText("v" + current + " / v" + latest);
+        updateSize();
+    }
+
+    public void setStatusText(String currentVersion, String statusText) {
+        String current = normalizeVersion(currentVersion, "?");
+        String status = normalizeVersion(statusText, "?");
+        button.setText("v" + current + " / " + status);
+        updateSize();
+    }
+
+    private void updateSize() {
         Dimension size = button.getPreferredSize();
         setPreferredSize(new Dimension(size.width + 2, 26));
         revalidate();
     }
 
     public void setUnknownLatest(String currentVersion) {
-        setVersionText(currentVersion, "?");
+        setStatusText(currentVersion, "unavailable");
     }
 
     private String normalizeVersion(String version, String fallback) {

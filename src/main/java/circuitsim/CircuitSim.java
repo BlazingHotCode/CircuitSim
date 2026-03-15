@@ -53,14 +53,16 @@ public class CircuitSim {
             "https://api.github.com/repos/BlazingHotCode/CircuitSim/releases/latest";
     private static final String RELEASES_PAGE_URL =
             "https://github.com/BlazingHotCode/CircuitSim/releases/latest";
-    private static final Pattern TAG_NAME_PATTERN =
-            Pattern.compile("\\\"tag_name\\\"\\s*:\\s*\\\"v?([^\\\"]+)\\\"");
-    private static final Pattern HTML_URL_PATTERN =
-            Pattern.compile("\\\"html_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+    private static final Pattern TOP_LEVEL_TAG_NAME_PATTERN =
+            Pattern.compile("\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
+    private static final Pattern TOP_LEVEL_HTML_URL_PATTERN =
+            Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"");
     private static final Pattern DOWNLOAD_URL_PATTERN =
             Pattern.compile("\\\"browser_download_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
     private static final Pattern RELEASE_TAG_URL_PATTERN =
             Pattern.compile("/releases/tag/v?([^/\\\"?#]+)");
+    private static final Pattern VERSION_PREFIX_PATTERN =
+            Pattern.compile("^[vV]?([0-9]+(?:\\.[0-9]+)*)");
 
     /**
      * Launches the CircuitSim application.
@@ -106,7 +108,7 @@ public class CircuitSim {
         String currentVersion = getCurrentVersion();
         UpdateStatusPanel updateStatusPanel = new UpdateStatusPanel(() ->
                 handleUpdateStatusClick(frame, currentVersion, fetchLatestRelease()));
-        updateStatusPanel.setVersionText(currentVersion, "checking...");
+        updateStatusPanel.setStatusText(currentVersion, "checking...");
 
         TempModePanel[] tempModePanelHolder = new TempModePanel[1];
         tempModePanelHolder[0] = new TempModePanel(() -> {
@@ -650,18 +652,20 @@ public class CircuitSim {
             return;
         }
         Thread updateThread = new Thread(() -> {
-            UpdateInfo latestRelease = fetchLatestRelease();
-            SwingUtilities.invokeLater(() -> applyLatestRelease(frame, updateStatusPanel, currentVersion, latestRelease));
+            UpdateCheckResult result = fetchLatestRelease();
+            SwingUtilities.invokeLater(() -> applyLatestRelease(frame, updateStatusPanel, currentVersion, result));
         }, "circuitsim-update-check");
         updateThread.setDaemon(true);
         updateThread.start();
     }
 
     private static void applyLatestRelease(JFrame frame, UpdateStatusPanel updateStatusPanel,
-                                           String currentVersion, UpdateInfo latestRelease) {
+                                           String currentVersion, UpdateCheckResult result) {
+        UpdateInfo latestRelease = result == null ? null : result.release();
         if (updateStatusPanel != null) {
             if (latestRelease == null) {
-                updateStatusPanel.setUnknownLatest(currentVersion);
+                updateStatusPanel.setStatusText(currentVersion,
+                        result == null ? "unavailable" : result.label());
             } else {
                 updateStatusPanel.setVersionText(currentVersion, latestRelease.version());
             }
@@ -683,15 +687,24 @@ public class CircuitSim {
         return appPackage.getImplementationVersion();
     }
 
-    private static UpdateInfo fetchLatestRelease() {
-        UpdateInfo apiRelease = fetchLatestReleaseFromApi();
-        if (apiRelease != null) {
-            return apiRelease;
+    private static UpdateCheckResult fetchLatestRelease() {
+        UpdateCheckResult pageRelease = fetchLatestReleaseFromPage();
+        if (pageRelease.release() != null) {
+            UpdateCheckResult apiRelease = fetchLatestReleaseFromApi();
+            if (apiRelease.release() != null) {
+                UpdateInfo pageInfo = pageRelease.release();
+                UpdateInfo apiInfo = apiRelease.release();
+                return new UpdateCheckResult(
+                        new UpdateInfo(pageInfo.version(), pageInfo.url(), apiInfo.downloadUrl()),
+                        pageRelease.label(),
+                        pageRelease.detail());
+            }
+            return pageRelease;
         }
-        return fetchLatestReleaseFromPage();
+        return pageRelease;
     }
 
-    private static UpdateInfo fetchLatestReleaseFromApi() {
+    private static UpdateCheckResult fetchLatestReleaseFromApi() {
         try {
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(4))
@@ -705,28 +718,37 @@ public class CircuitSim {
                     .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return null;
+                return new UpdateCheckResult(null, "api " + response.statusCode(),
+                        "GitHub API returned HTTP " + response.statusCode() + ".");
             }
             String body = response.body();
-            String version = extractJsonValue(body, TAG_NAME_PATTERN);
+            String version = normalizeReleaseVersion(extractJsonValue(body, TOP_LEVEL_TAG_NAME_PATTERN));
             if (version == null || version.isBlank()) {
-                return null;
+                return new UpdateCheckResult(null, "api parse",
+                        "GitHub API response did not contain a usable tag_name.");
             }
-            String releaseUrl = extractJsonValue(body, HTML_URL_PATTERN);
+            String releaseUrl = extractJsonValue(body, TOP_LEVEL_HTML_URL_PATTERN);
             if (releaseUrl == null || releaseUrl.isBlank()) {
                 releaseUrl = RELEASES_PAGE_URL;
             }
             String directDownloadUrl = choosePreferredDownloadUrl(extractJsonValues(body, DOWNLOAD_URL_PATTERN));
-            return new UpdateInfo(version, releaseUrl, directDownloadUrl);
+            return new UpdateCheckResult(new UpdateInfo(version, releaseUrl, directDownloadUrl),
+                    "v" + version, "Latest release from GitHub API: " + version + ".");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            return null;
+            return new UpdateCheckResult(null, "interrupted", "Update check was interrupted.");
         } catch (IOException | RuntimeException ex) {
-            return null;
+            if (isSslHandshakeError(ex)) {
+                return new UpdateCheckResult(null, "ssl error",
+                        "Java could not establish a trusted HTTPS connection to GitHub. "
+                                + "Click this button to open releases in your browser instead.");
+            }
+            return new UpdateCheckResult(null, "api error",
+                    "GitHub API request failed: " + ex.getClass().getSimpleName() + ".");
         }
     }
 
-    private static UpdateInfo fetchLatestReleaseFromPage() {
+    private static UpdateCheckResult fetchLatestReleaseFromPage() {
         try {
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(4))
@@ -734,29 +756,45 @@ public class CircuitSim {
                     .build();
             HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASES_PAGE_URL))
                     .timeout(Duration.ofSeconds(6))
-                    .header("Accept", "text/html")
                     .header("User-Agent", "CircuitSim")
                     .GET()
                     .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return null;
+                return new UpdateCheckResult(null, "page " + response.statusCode(),
+                        "Release page returned HTTP " + response.statusCode() + ".");
             }
             String releaseUrl = response.uri().toString();
             String version = extractReleaseVersion(releaseUrl);
-            if ((version == null || version.isBlank()) && response.body() != null) {
-                version = extractReleaseVersion(response.body());
-            }
             if (version == null || version.isBlank()) {
-                return null;
+                return new UpdateCheckResult(null, "page parse",
+                        "Final release redirect URL did not contain a usable release tag.");
             }
-            return new UpdateInfo(version, releaseUrl, null);
+            return new UpdateCheckResult(new UpdateInfo(version, releaseUrl, null),
+                    "v" + version, "Latest release from GitHub redirect: " + version + ".");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            return null;
+            return new UpdateCheckResult(null, "interrupted", "Update check was interrupted.");
         } catch (IOException | RuntimeException ex) {
-            return null;
+            if (isSslHandshakeError(ex)) {
+                return new UpdateCheckResult(null, "ssl error",
+                        "Java could not establish a trusted HTTPS connection to GitHub. "
+                                + "Click this button to open releases in your browser instead.");
+            }
+            return new UpdateCheckResult(null, "page error",
+                    "Release page request failed: " + ex.getClass().getSimpleName() + ".");
         }
+    }
+
+    private static boolean isSslHandshakeError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof javax.net.ssl.SSLHandshakeException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static String extractReleaseVersion(String text) {
@@ -767,11 +805,22 @@ public class CircuitSim {
         if (!matcher.find()) {
             return null;
         }
+        return normalizeReleaseVersion(matcher.group(1));
+    }
+
+    private static String normalizeReleaseVersion(String rawVersion) {
+        if (rawVersion == null || rawVersion.isBlank()) {
+            return null;
+        }
+        Matcher matcher = VERSION_PREFIX_PATTERN.matcher(rawVersion.trim());
+        if (!matcher.find()) {
+            return null;
+        }
         return matcher.group(1);
     }
 
     private static String extractJsonValue(String body, Pattern pattern) {
-        if (body == null || pattern == null) {
+        if (body == null || body.isBlank() || pattern == null) {
             return null;
         }
         Matcher matcher = pattern.matcher(body);
@@ -869,9 +918,14 @@ public class CircuitSim {
         }
     }
 
-    private static void handleUpdateStatusClick(JFrame frame, String currentVersion, UpdateInfo latestRelease) {
+    private static void handleUpdateStatusClick(JFrame frame, String currentVersion, UpdateCheckResult result) {
+        UpdateInfo latestRelease = result == null ? null : result.release();
         if (latestRelease != null && isNewerVersion(latestRelease.version(), currentVersion)) {
             showUpdateDialog(frame, currentVersion, latestRelease);
+            return;
+        }
+        if (result != null && result.label() != null && result.label().startsWith("ssl") && canOpenBrowser()) {
+            openReleasePage(RELEASES_PAGE_URL);
             return;
         }
         if (latestRelease != null && canOpenBrowser()) {
@@ -879,7 +933,8 @@ public class CircuitSim {
             return;
         }
         JOptionPane.showMessageDialog(frame,
-                "Installed: " + currentVersion + "\nLatest: unavailable",
+                "Installed: " + currentVersion + "\nLatest: unavailable"
+                        + (result != null && result.detail() != null ? "\n\n" + result.detail() : ""),
                 "Version Status",
                 JOptionPane.INFORMATION_MESSAGE);
     }
@@ -909,5 +964,8 @@ public class CircuitSim {
     }
 
     private record UpdateInfo(String version, String url, String downloadUrl) {
+    }
+
+    private record UpdateCheckResult(UpdateInfo release, String label, String detail) {
     }
 }

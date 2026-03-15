@@ -1,6 +1,7 @@
 # Compiled class file
 *.class
 out/
+dist/
 build/package/
 build/package-input/
 dist/manifest.generated.txt
