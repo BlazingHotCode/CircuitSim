@@ -6,7 +6,7 @@ and watch the simulation update live (analog voltages/currents + basic digital l
 CircuitSim is designed as a “sandbox” editor: you place components from a palette, connect them with
 wires, then the solver continuously recomputes values as you move/rotate/edit the circuit.
 
-**Current version:** 1.1.6
+**Current version:** 1.1.7
 
 ## Features
 
