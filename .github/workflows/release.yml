@@ -1,0 +1,218 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish, for example v1.1.3'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare Release Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve version and release body
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          VERSION="$(tr -d '\r\n' < build/version.txt)"
+          EXPECTED_TAG="v$VERSION"
+
+          if [[ "$TAG" != "$EXPECTED_TAG" ]]; then
+            printf 'Tag %s does not match build/version.txt (%s)\n' "$TAG" "$VERSION" >&2
+            exit 1
+          fi
+
+          NOTES_FILE="release-notes/$VERSION.md"
+          BODY_FILE="release-body.md"
+          : > "$BODY_FILE"
+
+          if [[ -f "$NOTES_FILE" ]]; then
+            cat "$NOTES_FILE" >> "$BODY_FILE"
+            printf '\n\n' >> "$BODY_FILE"
+          else
+            printf '# CircuitSim %s\n\n' "$VERSION" >> "$BODY_FILE"
+          fi
+
+          CHANGELOG_SECTION="$(awk -v version="$VERSION" '
+            $0 ~ "^## " version "([[:space:]]|$)" { capture=1 }
+            capture {
+              if ($0 ~ "^## " && $0 !~ "^## " version "([[:space:]]|$)") {
+                exit
+              }
+              print
+            }
+          ' CHANGELOG.md)"
+
+          if [[ -n "$CHANGELOG_SECTION" ]]; then
+            printf '## Changelog\n\n' >> "$BODY_FILE"
+            printf '%s\n' "$CHANGELOG_SECTION" >> "$BODY_FILE"
+          fi
+
+          {
+            printf 'tag=%s\n' "$TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload release body
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-body
+          path: release-body.md
+          if-no-files-found: error
+
+  windows:
+    name: Build Windows Release Assets
+    runs-on: windows-latest
+    needs: prepare
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install WiX Toolset v3
+        shell: powershell
+        run: |
+          choco upgrade wixtoolset --no-progress -y
+          $wixBin = 'C:\Program Files (x86)\WiX Toolset v3.14\bin'
+          if (-not (Test-Path $wixBin)) {
+            throw "WiX bin directory not found at $wixBin"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $wixBin
+
+      - name: Build Windows packages
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1
+
+      - name: Archive Windows portable app
+        shell: powershell
+        run: |
+          $version = '${{ needs.prepare.outputs.version }}'
+          $portableZip = "build/package/windows/CircuitSim-windows-portable-$version.zip"
+          if (Test-Path $portableZip) {
+            Remove-Item $portableZip -Force
+          }
+          Compress-Archive -Path build/package/windows/CircuitSim\* -DestinationPath $portableZip
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            build/package/windows/CircuitSim-*.exe
+            build/package/windows/CircuitSim-windows-portable-*.zip
+          if-no-files-found: error
+
+  linux:
+    name: Build Linux Release Assets
+    runs-on: ubuntu-latest
+    needs: prepare
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot
+
+      - name: Build Linux packages
+        run: |
+          chmod +x ./scripts/build-jar.sh ./scripts/package-linux.sh ./scripts/run-dev.sh
+          ./scripts/package-linux.sh
+
+      - name: Archive Linux portable app
+        run: |
+          version='${{ needs.prepare.outputs.version }}'
+          tar -C build/package/linux -czf "build/package/linux/CircuitSim-linux-portable-$version.tar.gz" CircuitSim
+
+      - name: Upload Linux release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            build/package/linux/circuitsim_*.deb
+            build/package/linux/CircuitSim-linux-portable-*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - windows
+      - linux
+
+    steps:
+      - name: Download release body
+        uses: actions/download-artifact@v4
+        with:
+          name: release-body
+          path: release-body
+
+      - name: Download Windows assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: release-assets/windows
+
+      - name: Download Linux assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: release-assets/linux
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: CircuitSim ${{ needs.prepare.outputs.version }}
+          body_path: release-body/release-body.md
+          files: |
+            release-assets/windows/*
+            release-assets/linux/*
+          fail_on_unmatched_files: true

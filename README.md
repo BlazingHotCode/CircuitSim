@@ -128,6 +128,9 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - Uploaded artifacts include:
   - Windows: installer `.exe` plus portable app image
   - Linux: `.deb` plus portable app image
+- Tagged releases use `/.github/workflows/release.yml` to publish a GitHub Release with Windows and Linux downloads attached.
+- The release body includes `release-notes/<version>.md` when present and appends the matching version section from `CHANGELOG.md`.
+- To publish a release, update `build/version.txt`, commit the release changes, then push a matching tag such as `v1.1.3`.
 
 ## Packaging Assets
 
