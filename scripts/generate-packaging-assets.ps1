@@ -8,15 +8,89 @@ $packagingDir = Join-Path $rootDir 'packaging'
 New-Item -ItemType Directory -Path $packagingDir -Force | Out-Null
 
 Add-Type -AssemblyName System.Drawing
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
 
-public static class NativeIcon {
-    [DllImport("user32.dll")]
-    public static extern bool DestroyIcon(IntPtr handle);
+function New-ScaledBitmap {
+    param(
+        [System.Drawing.Bitmap]$SourceBitmap,
+        [int]$Size
+    )
+
+    $scaledBitmap = New-Object System.Drawing.Bitmap($Size, $Size)
+    $scaledGraphics = [System.Drawing.Graphics]::FromImage($scaledBitmap)
+    $scaledGraphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $scaledGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $scaledGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $scaledGraphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $scaledGraphics.DrawImage($SourceBitmap, 0, 0, $Size, $Size)
+    $scaledGraphics.Dispose()
+    return $scaledBitmap
 }
-"@
+
+function Get-PngBytes {
+    param([System.Drawing.Bitmap]$Bitmap)
+
+    $memoryStream = New-Object System.IO.MemoryStream
+    try {
+        $Bitmap.Save($memoryStream, [System.Drawing.Imaging.ImageFormat]::Png)
+        return $memoryStream.ToArray()
+    } finally {
+        $memoryStream.Dispose()
+    }
+}
+
+function Write-MultiSizeIcon {
+    param(
+        [System.Drawing.Bitmap]$SourceBitmap,
+        [string]$IconPath
+    )
+
+    $iconSizes = @(16, 24, 32, 48, 64, 128, 256)
+    $images = @()
+    foreach ($iconSize in $iconSizes) {
+        $scaledBitmap = New-ScaledBitmap -SourceBitmap $SourceBitmap -Size $iconSize
+        try {
+            $imageBytes = [byte[]](Get-PngBytes -Bitmap $scaledBitmap)
+            $images += [pscustomobject]@{
+                Size = $iconSize
+                Bytes = $imageBytes
+            }
+        } finally {
+            $scaledBitmap.Dispose()
+        }
+    }
+
+    $fileStream = [System.IO.File]::Create($IconPath)
+    try {
+        $writer = New-Object System.IO.BinaryWriter($fileStream)
+        try {
+            $writer.Write([UInt16]0)
+            $writer.Write([UInt16]1)
+            $writer.Write([UInt16]$images.Count)
+
+            $offset = 6 + (16 * $images.Count)
+            foreach ($image in $images) {
+                $entrySize = if ($image.Size -ge 256) { 0 } else { $image.Size }
+                $writer.Write([byte]$entrySize)
+                $writer.Write([byte]$entrySize)
+                $writer.Write([byte]0)
+                $writer.Write([byte]0)
+                $writer.Write([UInt16]1)
+                $writer.Write([UInt16]32)
+                $writer.Write([UInt32]$image.Bytes.Length)
+                $writer.Write([UInt32]$offset)
+            $offset += $image.Bytes.Length
+            }
+
+            foreach ($image in $images) {
+                $writer.Write([byte[]]$image.Bytes)
+            }
+        } finally {
+            $writer.Dispose()
+        }
+    } finally {
+        $fileStream.Dispose()
+    }
+}
 
 $size = 256
 $bitmap = New-Object System.Drawing.Bitmap($size, $size)
@@ -65,23 +139,7 @@ $pngPath = Join-Path $packagingDir 'circuitsim.png'
 $icoPath = Join-Path $packagingDir 'circuitsim.ico'
 
 $bitmap.Save($pngPath, [System.Drawing.Imaging.ImageFormat]::Png)
-
-$iconHandle = $bitmap.GetHicon()
-try {
-    $icon = [System.Drawing.Icon]::FromHandle($iconHandle)
-    try {
-        $stream = [System.IO.File]::Create($icoPath)
-        try {
-            $icon.Save($stream)
-        } finally {
-            $stream.Dispose()
-        }
-    } finally {
-        $icon.Dispose()
-    }
-} finally {
-    [NativeIcon]::DestroyIcon($iconHandle) | Out-Null
-}
+Write-MultiSizeIcon -SourceBitmap $bitmap -IconPath $icoPath
 
 $stringFormat.Dispose()
 $textBrush.Dispose()

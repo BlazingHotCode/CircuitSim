@@ -230,7 +230,7 @@ if (Test-Path $appImageDir) {
 }
 
 $installerExe = Join-Path $DestDir "$appName-$version.exe"
-if (Test-Path $installerExe) {
+if (($Type -eq 'exe' -or $Type -eq 'both') -and (Test-Path $installerExe)) {
     Remove-Item $installerExe -Force
 }
 
