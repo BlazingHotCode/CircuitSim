@@ -15,7 +15,7 @@ import java.awt.Graphics2D;
  */
 @BuiltinComponent(group = "Passive", groupOrder = 30, paletteOrder = 25)
 public class Diode extends TwoTerminalComponent {
-    private static final int DEFAULT_WIDTH = Grid.SIZE * 4;
+    private static final int DEFAULT_WIDTH = Grid.SIZE * 3;
     private static final int DEFAULT_HEIGHT = Grid.SIZE * 2;
     private static final float DEFAULT_FORWARD_VOLTAGE = 0.7f;
 
@@ -103,8 +103,8 @@ public class Diode extends TwoTerminalComponent {
         double cathodeOffset = Math.max(Grid.SIZE * 0.35, length * 0.12);
         double centerX = (sx + ex) / 2.0;
         double centerY = (sy + ey) / 2.0;
-        double triangleTipX = centerX - (ux * cathodeOffset);
-        double triangleTipY = centerY - (uy * cathodeOffset);
+        double triangleTipX = centerX + (ux * cathodeOffset);
+        double triangleTipY = centerY + (uy * cathodeOffset);
         double triangleBaseX = centerX - (ux * (cathodeOffset * 2.0));
         double triangleBaseY = centerY - (uy * (cathodeOffset * 2.0));
         double cathodeX = centerX + (ux * cathodeOffset);

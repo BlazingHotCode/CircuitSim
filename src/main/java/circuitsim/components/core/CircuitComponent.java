@@ -3,6 +3,7 @@ package circuitsim.components.core;
 import circuitsim.components.properties.BooleanProperty;
 import circuitsim.components.properties.ComponentProperty;
 import circuitsim.components.wiring.Wire;
+import circuitsim.ui.Grid;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -372,13 +373,16 @@ public abstract class CircuitComponent implements PropertyOwner, ComponentInterf
     public void rotate90() {
         double centerX = x + (width / 2.0);
         double centerY = y + (height / 2.0);
+        boolean preserveTopLeft = ((width / Grid.SIZE) & 1) != ((height / Grid.SIZE) & 1);
         int rotationLimit = allowFullRotation() ? 4 : 2;
         rotationQuarterTurns = (rotationQuarterTurns + 1) % rotationLimit;
         int oldWidth = width;
         width = height;
         height = oldWidth;
-        x = (int) Math.round(centerX - (width / 2.0));
-        y = (int) Math.round(centerY - (height / 2.0));
+        if (!preserveTopLeft) {
+            x = (int) Math.round(centerX - (width / 2.0));
+            y = (int) Math.round(centerY - (height / 2.0));
+        }
         if (aspectRatio != 0) {
             aspectRatio = 1f / aspectRatio;
         }

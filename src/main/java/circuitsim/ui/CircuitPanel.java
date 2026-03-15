@@ -1101,6 +1101,14 @@ public class CircuitPanel extends JPanel {
         if (selection.selectedComponents.isEmpty() && selection.selectedWires.isEmpty()) {
             return;
         }
+        if (selection.selectedComponents.size() == 1 && selection.selectedWires.isEmpty()) {
+            CircuitComponent component = selection.selectedComponents.iterator().next();
+            component.rotate90();
+            updateAttachedWireNodes(component);
+            recordHistoryState();
+            repaint();
+            return;
+        }
         java.awt.Rectangle bounds = getSelectionBounds();
         if (bounds == null) {
             return;
