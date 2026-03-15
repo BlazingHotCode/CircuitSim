@@ -4,6 +4,7 @@ import circuitsim.components.core.CircuitComponent;
 import circuitsim.components.core.ConnectionPoint;
 import circuitsim.components.core.SwitchLike;
 import circuitsim.components.electrical.Battery;
+import circuitsim.components.electrical.Capacitor;
 import circuitsim.components.electrical.Ground;
 import circuitsim.components.electrical.LightBulb;
 import circuitsim.components.electrical.PowerUser;
@@ -34,6 +35,9 @@ public final class CircuitPhysics {
     private static final double SHORT_THRESHOLD = 1e-6;
     private static final double LOGIC_INPUT_RESISTANCE = 2e4;
     private static final double POWER_USER_MAX_RESISTANCE = 1e12;
+    private static final double MIN_TIME_STEP_SECONDS = 1.0 / 240.0;
+    private static final double MAX_TIME_STEP_SECONDS = 0.1;
+    private static long lastUpdateNanos = -1L;
 
     /**
      * Prevent instantiation.
@@ -69,6 +73,7 @@ public final class CircuitPhysics {
         if (components == null || wires == null) {
             return false;
         }
+        double timeStepSeconds = getTimeStepSeconds();
         Map<Point, Integer> nodeIndex = new HashMap<>();
         for (CircuitComponent component : components) {
             for (ConnectionPoint point : component.getConnectionPoints()) {
@@ -129,6 +134,19 @@ public final class CircuitPhysics {
                             component.getConnectionPointWorldX(points.get(1)),
                             component.getConnectionPointWorldY(points.get(1)));
                     edges.add(new Edge(aIndex, bIndex, getPowerUserResistance(powerUser), powerUser));
+                }
+                case Capacitor capacitor -> {
+                    List<ConnectionPoint> points = capacitor.getConnectionPoints();
+                    if (points.size() < 2) {
+                        break;
+                    }
+                    int aIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(0)),
+                            component.getConnectionPointWorldY(points.get(0)));
+                    int bIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(1)),
+                            component.getConnectionPointWorldY(points.get(1)));
+                    edges.add(new Edge(aIndex, bIndex, MIN_RESISTANCE, capacitor));
                 }
                 case LightBulb lightBulb -> {
                     List<ConnectionPoint> points = lightBulb.getConnectionPoints();
@@ -391,7 +409,7 @@ public final class CircuitPhysics {
             }
 
             double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
-                    pruned.groundIndex);
+                    pruned.groundIndex, timeStepSeconds);
             if (nodeVoltages == null) {
                 for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
                     snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
@@ -406,49 +424,65 @@ public final class CircuitPhysics {
             }
 
             java.util.Set<Integer> activeNodes = new java.util.HashSet<>();
+            double[] nodeCurrentHints = new double[pruned.nodeCount];
             for (Edge edge : pruned.edges) {
                 int a = edge.aIndex;
                 int b = edge.bIndex;
                 double va = nodeVoltages[a];
                 double vb = nodeVoltages[b];
                 double voltage = va - vb;
-                double current = voltage / edge.resistance;
+                double current = getEdgeCurrent(edge, voltage, timeStepSeconds);
                 if (Math.abs(current) > 0.0001) {
                     activeNodes.add(a);
                     activeNodes.add(b);
                 }
                 if (edge.wire != null) {
                     edge.wire.setComputedVoltage((float) Math.abs(voltage));
-                    edge.wire.setComputedAmpere((float) Math.abs(current));
+                    continue;
                 }
+                double absCurrent = Math.abs(current);
+                nodeCurrentHints[a] = Math.max(nodeCurrentHints[a], absCurrent);
+                nodeCurrentHints[b] = Math.max(nodeCurrentHints[b], absCurrent);
                 if (edge.resistor != null) {
                     edge.resistor.setComputedVoltage((float) Math.abs(voltage));
-                    edge.resistor.setComputedAmpere((float) Math.abs(current));
+                    edge.resistor.setComputedAmpere((float) absCurrent);
                 }
                 if (edge.powerUser != null) {
                     float absVoltage = (float) Math.abs(voltage);
-                    float absCurrent = (float) Math.abs(current);
+                    float absCurrentFloat = (float) absCurrent;
                     edge.powerUser.setComputedVoltage(absVoltage);
-                    edge.powerUser.setComputedAmpere(absCurrent);
-                    edge.powerUser.setComputedPowerWatt(absVoltage * absCurrent);
-                    edge.powerUser.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
+                    edge.powerUser.setComputedAmpere(absCurrentFloat);
+                    edge.powerUser.setComputedPowerWatt(absVoltage * absCurrentFloat);
+                    edge.powerUser.setComputedResistance(absCurrentFloat > 1e-9f ? (absVoltage / absCurrentFloat) : 0f);
+                }
+                if (edge.capacitor != null) {
+                    edge.capacitor.setComputedVoltage((float) Math.abs(voltage));
+                    edge.capacitor.setComputedAmpere((float) absCurrent);
+                    edge.capacitor.setPreviousVoltage((float) voltage);
                 }
                 if (edge.lightBulb != null) {
                     float absVoltage = (float) Math.abs(voltage);
-                    float absCurrent = (float) Math.abs(current);
-                    float absPower = absVoltage * absCurrent;
+                    float absCurrentFloat = (float) absCurrent;
+                    float absPower = absVoltage * absCurrentFloat;
                     edge.lightBulb.setComputedVoltage(absVoltage);
-                    edge.lightBulb.setComputedAmpere(absCurrent);
+                    edge.lightBulb.setComputedAmpere(absCurrentFloat);
                     edge.lightBulb.setComputedPowerWatt(absPower);
-                    edge.lightBulb.setComputedResistance(absCurrent > 1e-9f ? (absVoltage / absCurrent) : 0f);
+                    edge.lightBulb.setComputedResistance(absCurrentFloat > 1e-9f ? (absVoltage / absCurrentFloat) : 0f);
                     edge.lightBulb.updateBurnout(absPower);
                 }
                 if (edge.ammeter != null) {
-                    edge.ammeter.setComputedAmpere((float) Math.abs(current));
+                    edge.ammeter.setComputedAmpere((float) absCurrent);
                 }
                 if (edge.circuitSwitch != null) {
-                    edge.circuitSwitch.setComputedAmpere((float) Math.abs(current));
+                    edge.circuitSwitch.setComputedAmpere((float) absCurrent);
                 }
+            }
+            for (Edge edge : pruned.edges) {
+                if (edge.wire == null) {
+                    continue;
+                }
+                double hintedCurrent = Math.max(nodeCurrentHints[edge.aIndex], nodeCurrentHints[edge.bIndex]);
+                edge.wire.setComputedAmpere((float) hintedCurrent);
             }
 
             List<Voltmeter> componentVoltmeters = voltmetersByComponent.get(cid);
@@ -624,6 +658,9 @@ public final class CircuitPhysics {
                 edge.powerUser.setComputedPowerWatt(0f);
                 edge.powerUser.setComputedResistance(0f);
             }
+            if (edge.capacitor != null) {
+                edge.capacitor.setComputedAmpere(0f);
+            }
             if (edge.lightBulb != null) {
                 edge.lightBulb.setComputedVoltage(0f);
                 edge.lightBulb.setComputedAmpere(0f);
@@ -659,6 +696,9 @@ public final class CircuitPhysics {
                 edge.powerUser.setComputedAmpere(0f);
                 edge.powerUser.setComputedPowerWatt(0f);
                 edge.powerUser.setComputedResistance(0f);
+            }
+            if (edge.capacitor != null && !pruned.capacitors.contains(edge.capacitor)) {
+                edge.capacitor.setComputedAmpere(0f);
             }
             if (edge.lightBulb != null && !pruned.lightBulbs.contains(edge.lightBulb)) {
                 edge.lightBulb.setComputedVoltage(0f);
@@ -1190,7 +1230,7 @@ public final class CircuitPhysics {
      * Solves node voltages using modified nodal analysis.
      */
     private static double[] solveNodeVoltages(int nodeCount, List<Edge> edges,
-            List<Battery> batteries, int groundIndex) {
+            List<Battery> batteries, int groundIndex, double timeStepSeconds) {
         int voltageSourceCount = batteries.size();
         int unknownNodeCount = nodeCount - 1;
         if (unknownNodeCount <= 0) {
@@ -1203,7 +1243,7 @@ public final class CircuitPhysics {
         for (Edge edge : edges) {
             int a = edge.aIndex;
             int b = edge.bIndex;
-            double conductance = 1.0 / edge.resistance;
+            double conductance = getEdgeConductance(edge, timeStepSeconds);
             if (a != groundIndex) {
                 int ia = nodeToMatrixIndex(a, groundIndex);
                 matrix[ia][ia] += conductance;
@@ -1217,6 +1257,17 @@ public final class CircuitPhysics {
                 int ib = nodeToMatrixIndex(b, groundIndex);
                 matrix[ia][ib] -= conductance;
                 matrix[ib][ia] -= conductance;
+            }
+            if (edge.capacitor != null) {
+                double historyCurrent = getCapacitorHistoryCurrent(edge.capacitor, timeStepSeconds);
+                if (a != groundIndex) {
+                    int ia = nodeToMatrixIndex(a, groundIndex);
+                    rhs[ia] += historyCurrent;
+                }
+                if (b != groundIndex) {
+                    int ib = nodeToMatrixIndex(b, groundIndex);
+                    rhs[ib] -= historyCurrent;
+                }
             }
         }
 
@@ -1255,6 +1306,53 @@ public final class CircuitPhysics {
             }
         }
         return voltages;
+    }
+
+    private static double getTimeStepSeconds() {
+        long now = System.nanoTime();
+        if (lastUpdateNanos < 0L) {
+            lastUpdateNanos = now;
+            return 1.0 / 30.0;
+        }
+        double delta = (now - lastUpdateNanos) / 1_000_000_000.0;
+        lastUpdateNanos = now;
+        if (Double.isNaN(delta) || Double.isInfinite(delta) || delta <= 0.0) {
+            return 1.0 / 30.0;
+        }
+        return Math.max(MIN_TIME_STEP_SECONDS, Math.min(MAX_TIME_STEP_SECONDS, delta));
+    }
+
+    private static double getEdgeConductance(Edge edge, double timeStepSeconds) {
+        if (edge.capacitor != null) {
+            double capacitance = Math.max(0.0, edge.capacitor.getCapacitanceFarad());
+            if (!(capacitance > 0.0)) {
+                return 1.0 / POWER_USER_MAX_RESISTANCE;
+            }
+            return Math.max(1.0 / POWER_USER_MAX_RESISTANCE, capacitance / timeStepSeconds);
+        }
+        return 1.0 / edge.resistance;
+    }
+
+    private static double getCapacitorHistoryCurrent(Capacitor capacitor, double timeStepSeconds) {
+        if (capacitor == null) {
+            return 0.0;
+        }
+        double capacitance = Math.max(0.0, capacitor.getCapacitanceFarad());
+        if (!(capacitance > 0.0)) {
+            return 0.0;
+        }
+        return (capacitance / timeStepSeconds) * capacitor.getPreviousVoltage();
+    }
+
+    private static double getEdgeCurrent(Edge edge, double voltage, double timeStepSeconds) {
+        if (edge.capacitor != null) {
+            double capacitance = Math.max(0.0, edge.capacitor.getCapacitanceFarad());
+            if (!(capacitance > 0.0)) {
+                return 0.0;
+            }
+            return (capacitance / timeStepSeconds) * (voltage - edge.capacitor.getPreviousVoltage());
+        }
+        return voltage / edge.resistance;
     }
 
     /**
@@ -1336,6 +1434,7 @@ public final class CircuitPhysics {
         private final Wire wire;
         private final Resistor resistor;
         private final PowerUser powerUser;
+        private final Capacitor capacitor;
         private final LightBulb lightBulb;
         private final Ammeter ammeter;
         private final SwitchLike circuitSwitch;
@@ -1352,6 +1451,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.powerUser = null;
+            this.capacitor = null;
             this.lightBulb = null;
             this.ammeter = null;
             this.circuitSwitch = null;
@@ -1370,6 +1470,7 @@ public final class CircuitPhysics {
             this.wire = wire;
             this.resistor = null;
             this.powerUser = null;
+            this.capacitor = null;
             this.lightBulb = null;
             this.ammeter = null;
             this.circuitSwitch = null;
@@ -1388,6 +1489,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = resistor;
             this.powerUser = null;
+            this.capacitor = null;
             this.lightBulb = null;
             this.ammeter = null;
             this.circuitSwitch = null;
@@ -1406,6 +1508,26 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.powerUser = powerUser;
+            this.capacitor = null;
+            this.lightBulb = null;
+            this.ammeter = null;
+            this.circuitSwitch = null;
+        }
+
+        /**
+         * @param aIndex node A index
+         * @param bIndex node B index
+         * @param resistance resistance value
+         * @param capacitor associated capacitor
+         */
+        private Edge(int aIndex, int bIndex, double resistance, Capacitor capacitor) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = null;
+            this.powerUser = null;
+            this.capacitor = capacitor;
             this.lightBulb = null;
             this.ammeter = null;
             this.circuitSwitch = null;
@@ -1424,6 +1546,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.powerUser = null;
+            this.capacitor = null;
             this.lightBulb = lightBulb;
             this.ammeter = null;
             this.circuitSwitch = null;
@@ -1442,6 +1565,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.powerUser = null;
+            this.capacitor = null;
             this.lightBulb = null;
             this.ammeter = ammeter;
             this.circuitSwitch = null;
@@ -1460,6 +1584,7 @@ public final class CircuitPhysics {
             this.wire = null;
             this.resistor = null;
             this.powerUser = null;
+            this.capacitor = null;
             this.lightBulb = null;
             this.ammeter = null;
             this.circuitSwitch = circuitSwitch;
@@ -1478,6 +1603,7 @@ public final class CircuitPhysics {
         private final java.util.Set<Wire> wires;
         private final java.util.Set<Resistor> resistors;
         private final java.util.Set<PowerUser> powerUsers;
+        private final java.util.Set<Capacitor> capacitors;
         private final java.util.Set<LightBulb> lightBulbs;
         private final java.util.Set<Ammeter> ammeters;
         private final java.util.Set<SwitchLike> switches;
@@ -1497,7 +1623,8 @@ public final class CircuitPhysics {
          */
         private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
                 List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors,
-                java.util.Set<PowerUser> powerUsers, java.util.Set<LightBulb> lightBulbs, java.util.Set<Ammeter> ammeters,
+                java.util.Set<PowerUser> powerUsers, java.util.Set<Capacitor> capacitors,
+                java.util.Set<LightBulb> lightBulbs, java.util.Set<Ammeter> ammeters,
                 java.util.Set<SwitchLike> switches, int[] nodeRemap) {
             this.nodeCount = nodeCount;
             this.groundIndex = groundIndex;
@@ -1507,6 +1634,7 @@ public final class CircuitPhysics {
             this.wires = wires;
             this.resistors = resistors;
             this.powerUsers = powerUsers;
+            this.capacitors = capacitors;
             this.lightBulbs = lightBulbs;
             this.ammeters = ammeters;
             this.switches = switches;
@@ -1599,6 +1727,7 @@ public final class CircuitPhysics {
         java.util.Set<Wire> prunedWires = new java.util.HashSet<>();
         java.util.Set<Resistor> prunedResistors = new java.util.HashSet<>();
         java.util.Set<PowerUser> prunedPowerUsers = new java.util.HashSet<>();
+        java.util.Set<Capacitor> prunedCapacitors = new java.util.HashSet<>();
         java.util.Set<LightBulb> prunedLightBulbs = new java.util.HashSet<>();
         java.util.Set<Ammeter> prunedAmmeters = new java.util.HashSet<>();
         java.util.Set<SwitchLike> prunedSwitches = new java.util.HashSet<>();
@@ -1616,6 +1745,9 @@ public final class CircuitPhysics {
                 } else if (edge.powerUser != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.powerUser);
                     prunedPowerUsers.add(edge.powerUser);
+                } else if (edge.capacitor != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.capacitor);
+                    prunedCapacitors.add(edge.capacitor);
                 } else if (edge.lightBulb != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.lightBulb);
                     prunedLightBulbs.add(edge.lightBulb);
@@ -1646,10 +1778,10 @@ public final class CircuitPhysics {
         if (remappedGround < 0 || remappedPositive < 0) {
             return new GraphView(0, remappedGround, remappedPositive, java.util.Collections.emptyList(),
                     java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedPowerUsers,
-                    prunedLightBulbs, prunedAmmeters, prunedSwitches, remap);
+                    prunedCapacitors, prunedLightBulbs, prunedAmmeters, prunedSwitches, remap);
         }
         return new GraphView(newCount, remappedGround, remappedPositive, prunedEdges,
-                prunedBatteries, prunedWires, prunedResistors, prunedPowerUsers, prunedLightBulbs, prunedAmmeters,
-                prunedSwitches, remap);
+                prunedBatteries, prunedWires, prunedResistors, prunedPowerUsers, prunedCapacitors,
+                prunedLightBulbs, prunedAmmeters, prunedSwitches, remap);
     }
 }

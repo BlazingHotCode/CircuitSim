@@ -1423,6 +1423,7 @@ public class CircuitPanel extends JPanel {
         Float voltage = null;
         Float internalResistance = null;
         Float resistance = null;
+        Float capacitance = null;
         Float powerWatt = null;
         Boolean burnedOut = null;
         Float wiperPosition = null;
@@ -1433,6 +1434,7 @@ public class CircuitPanel extends JPanel {
                 internalResistance = battery.getInternalResistance();
             }
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
+            case circuitsim.components.electrical.Capacitor capacitor -> capacitance = capacitor.getCapacitanceFarad();
             case circuitsim.components.electrical.PowerUser powerUser -> {
                 voltage = powerUser.getTargetVoltage();
                 powerWatt = powerUser.getTargetPowerWatt();
@@ -1461,7 +1463,7 @@ public class CircuitPanel extends JPanel {
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
                 component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
-                voltage, internalResistance, resistance, powerWatt, burnedOut, wiperPosition, closed);
+                voltage, internalResistance, resistance, capacitance, powerWatt, burnedOut, wiperPosition, closed);
     }
 
     /**
@@ -1557,6 +1559,11 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.Resistor resistor -> {
                 if (state.getResistance() != null) {
                     resistor.setResistance(state.getResistance());
+                }
+            }
+            case circuitsim.components.electrical.Capacitor capacitor -> {
+                if (state.getCapacitance() != null) {
+                    capacitor.setCapacitanceFarad(state.getCapacitance());
                 }
             }
             case circuitsim.components.electrical.PowerUser powerUser -> {

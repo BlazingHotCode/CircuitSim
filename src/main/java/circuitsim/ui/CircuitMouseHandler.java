@@ -2,6 +2,7 @@ package circuitsim.ui;
 
 import circuitsim.components.core.CircuitComponent;
 import circuitsim.components.core.ConnectionPoint;
+import circuitsim.components.electrical.Capacitor;
 import circuitsim.components.electrical.Switch;
 import circuitsim.components.ports.CustomComponent;
 import circuitsim.components.ports.CustomInputPort;
@@ -212,6 +213,13 @@ final class CircuitMouseHandler extends MouseAdapter {
                 return;
             }
             CircuitComponent component = panel.findComponentAtPoint(worldX, worldY);
+            if (component instanceof Capacitor capacitor && capacitor.isStoredChargeButtonHit(worldX, worldY)) {
+                capacitor.toggleStoredChargeDisplay();
+                panel.selection.selectComponent(capacitor);
+                panel.recordHistoryState();
+                panel.repaint();
+                return;
+            }
             if (component instanceof Switch toggle) {
                 toggle.toggle();
                 panel.recordHistoryState();
