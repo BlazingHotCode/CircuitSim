@@ -143,17 +143,12 @@ jobs:
       - name: Install Linux packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot
+          sudo apt-get install -y fakeroot rpm
 
       - name: Build Linux packages
         run: |
           chmod +x ./scripts/build-jar.sh ./scripts/package-linux.sh ./scripts/run-dev.sh
           ./scripts/package-linux.sh
-
-      - name: Archive Linux portable app
-        run: |
-          version='${{ needs.prepare.outputs.version }}'
-          tar -C build/package/linux -czf "build/package/linux/CircuitSim-linux-portable-$version.tar.gz" CircuitSim
 
       - name: Upload Linux release assets
         uses: actions/upload-artifact@v4
@@ -161,6 +156,7 @@ jobs:
           name: release-linux
           path: |
             build/package/linux/circuitsim_*.deb
+            build/package/linux/circuitsim-*.rpm
             build/package/linux/CircuitSim-linux-portable-*.tar.gz
           if-no-files-found: error
 

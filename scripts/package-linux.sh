@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="CircuitSim"
 PACKAGE_NAME="circuitsim"
 VERSION="$(tr -d '\r\n' < "$ROOT_DIR/build/version.txt")"
-TYPE="both"
+TYPE="all"
 SKIP_JPACKAGE=0
 DEST_DIR="$ROOT_DIR/build/package/linux"
 INPUT_DIR="$ROOT_DIR/build/package-input/linux"
@@ -18,9 +18,9 @@ COPYRIGHT="Copyright (c) 2026 BlazingHotCode"
 
 usage() {
     cat <<'EOF'
-Usage: scripts/package-linux.sh [--type app-image|deb|both] [--dest DIR] [--skip-jpackage]
+Usage: scripts/package-linux.sh [--type app-image|deb|rpm|portable|all] [--dest DIR] [--skip-jpackage]
 
-Builds a Linux package with a bundled Java runtime so end users do not need a JDK/JRE installed.
+Builds Linux packages with a bundled Java runtime so end users do not need a JDK/JRE installed.
 EOF
 }
 
@@ -102,7 +102,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TYPE" in
-    app-image|deb|both)
+    app-image|deb|rpm|portable|all)
         ;;
     *)
         printf 'Unsupported package type: %s\n' "$TYPE" >&2
@@ -138,9 +138,13 @@ cp "$MAIN_JAR" "$INPUT_DIR/$APP_NAME.jar"
 
 APP_IMAGE_DIR="$DEST_DIR/$APP_NAME"
 DEB_PACKAGE="$DEST_DIR/${PACKAGE_NAME}_${VERSION}-1_amd64.deb"
+RPM_PACKAGE="$DEST_DIR/${PACKAGE_NAME}-${VERSION}-1.x86_64.rpm"
+PORTABLE_ARCHIVE="$DEST_DIR/${APP_NAME}-linux-portable-$VERSION.tar.gz"
 
 rm -rf "$APP_IMAGE_DIR"
 rm -f "$DEB_PACKAGE"
+rm -f "$RPM_PACKAGE"
+rm -f "$PORTABLE_ARCHIVE"
 
 if [[ $SKIP_JPACKAGE -eq 1 ]]; then
     printf 'Built jar only. Skipped jpackage. Required modules: %s\n' "$MODULES"
@@ -170,12 +174,24 @@ fi
 
 "$JPACKAGE_BIN" --type app-image "${COMMON_ARGS[@]}"
 
-if [[ "$TYPE" == "deb" || "$TYPE" == "both" ]]; then
+if [[ "$TYPE" == "deb" || "$TYPE" == "all" ]]; then
     "$JPACKAGE_BIN" --type deb \
         --linux-package-name "$PACKAGE_NAME" \
         --linux-shortcut \
         --linux-menu-group Education \
         "${COMMON_ARGS[@]}"
+fi
+
+if [[ "$TYPE" == "rpm" || "$TYPE" == "all" ]]; then
+    "$JPACKAGE_BIN" --type rpm \
+        --linux-package-name "$PACKAGE_NAME" \
+        --linux-shortcut \
+        --linux-menu-group Education \
+        "${COMMON_ARGS[@]}"
+fi
+
+if [[ "$TYPE" == "portable" || "$TYPE" == "all" ]]; then
+    tar -C "$DEST_DIR" -czf "$PORTABLE_ARCHIVE" "$APP_NAME"
 fi
 
 printf 'Linux packages created in %s\n' "$DEST_DIR"

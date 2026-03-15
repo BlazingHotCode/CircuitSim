@@ -94,16 +94,34 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 -SkipJPac
 
 The packaged launcher uses `packaging/circuitsim.png` when that asset is present.
 
-Build both a portable app image and a `.deb` package:
+Build the full Linux set: portable app image, distro-neutral `.tar.gz`, `.deb`, and `.rpm`:
 
 ```sh
 ./scripts/package-linux.sh
 ```
 
-Build only the portable app image:
+Build only the portable app image directory:
 
 ```sh
 ./scripts/package-linux.sh --type app-image
+```
+
+Build only the distro-neutral portable archive:
+
+```sh
+./scripts/package-linux.sh --type portable
+```
+
+Build only the Debian package:
+
+```sh
+./scripts/package-linux.sh --type deb
+```
+
+Build only the RPM package:
+
+```sh
+./scripts/package-linux.sh --type rpm
 ```
 
 If you only want to verify the jar build on a machine without `jpackage` installed:
@@ -115,7 +133,9 @@ If you only want to verify the jar build on a machine without `jpackage` install
 **Linux package notes**
 - The visible app name stays `CircuitSim`.
 - The Linux package identifier uses the distro-friendly name `circuitsim`.
-- Building `.deb` packages usually requires `fakeroot` to be available on the build machine.
+- `./scripts/package-linux.sh` now defaults to the broadest Linux output set: app image + `.tar.gz` + `.deb` + `.rpm`.
+- The `.tar.gz` archive is the closest thing to an all-distro option because it just extracts and runs with the bundled runtime.
+- Building `.deb` packages usually requires `fakeroot`, and `.rpm` packages require `rpm`/`rpmbuild`, to be available on the build machine.
 
 ## Development Workflow
 
@@ -129,7 +149,7 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - The workflow file is `/.github/workflows/package.yml`.
 - Uploaded artifacts include:
   - Windows: installer `.exe` plus portable app image
-  - Linux: `.deb` plus portable app image
+  - Linux: `.deb`, `.rpm`, portable `.tar.gz`, plus portable app image
 - Tagged releases use `/.github/workflows/release.yml` to publish a GitHub Release with Windows and Linux downloads attached.
 - The release body uses `release-notes/<version>.md` when present.
 - To publish a release, update `build/version.txt`, commit the release changes, then push a matching tag such as `v1.1.3`.

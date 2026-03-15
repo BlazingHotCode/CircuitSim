@@ -62,7 +62,7 @@ jobs:
       - name: Install Linux packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot
+          sudo apt-get install -y fakeroot rpm
 
       - name: Build Linux packages
         run: |
@@ -75,5 +75,7 @@ jobs:
           name: CircuitSim-linux
           path: |
             build/package/linux/circuitsim_*.deb
+            build/package/linux/circuitsim-*.rpm
+            build/package/linux/CircuitSim-linux-portable-*.tar.gz
             build/package/linux/CircuitSim/**
           if-no-files-found: error
