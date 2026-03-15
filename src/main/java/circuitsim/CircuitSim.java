@@ -59,6 +59,8 @@ public class CircuitSim {
             Pattern.compile("\\\"html_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
     private static final Pattern DOWNLOAD_URL_PATTERN =
             Pattern.compile("\\\"browser_download_url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
+    private static final Pattern RELEASE_TAG_URL_PATTERN =
+            Pattern.compile("/releases/tag/v?([^/\\\"?#]+)");
 
     /**
      * Launches the CircuitSim application.
@@ -682,9 +684,18 @@ public class CircuitSim {
     }
 
     private static UpdateInfo fetchLatestRelease() {
+        UpdateInfo apiRelease = fetchLatestReleaseFromApi();
+        if (apiRelease != null) {
+            return apiRelease;
+        }
+        return fetchLatestReleaseFromPage();
+    }
+
+    private static UpdateInfo fetchLatestReleaseFromApi() {
         try {
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(4))
+                    .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
             HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASES_LATEST_API_URL))
                     .timeout(Duration.ofSeconds(6))
@@ -713,6 +724,50 @@ public class CircuitSim {
         } catch (IOException | RuntimeException ex) {
             return null;
         }
+    }
+
+    private static UpdateInfo fetchLatestReleaseFromPage() {
+        try {
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(4))
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASES_PAGE_URL))
+                    .timeout(Duration.ofSeconds(6))
+                    .header("Accept", "text/html")
+                    .header("User-Agent", "CircuitSim")
+                    .GET()
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return null;
+            }
+            String releaseUrl = response.uri().toString();
+            String version = extractReleaseVersion(releaseUrl);
+            if ((version == null || version.isBlank()) && response.body() != null) {
+                version = extractReleaseVersion(response.body());
+            }
+            if (version == null || version.isBlank()) {
+                return null;
+            }
+            return new UpdateInfo(version, releaseUrl, null);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (IOException | RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private static String extractReleaseVersion(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        Matcher matcher = RELEASE_TAG_URL_PATTERN.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group(1);
     }
 
     private static String extractJsonValue(String body, Pattern pattern) {
