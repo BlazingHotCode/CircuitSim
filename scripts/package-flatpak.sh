@@ -11,6 +11,7 @@ BUILD_DIR="$ROOT_DIR/build/flatpak/build-dir"
 REPO_DIR="$ROOT_DIR/build/flatpak/repo"
 OUTPUT_DIR="$ROOT_DIR/build/package/flatpak"
 BUNDLE_PATH="$OUTPUT_DIR/CircuitSim-linux-$VERSION.flatpak"
+FLATPAK_BRANCH="stable"
 PREPARE_ONLY=0
 
 usage() {
@@ -70,7 +71,7 @@ require_cmd flatpak-builder
 rm -rf "$BUILD_DIR" "$REPO_DIR"
 rm -f "$BUNDLE_PATH"
 
-flatpak-builder --force-clean --repo="$REPO_DIR" "$BUILD_DIR" "$MANIFEST"
-flatpak build-bundle "$REPO_DIR" "$BUNDLE_PATH" "$APP_ID" stable
+flatpak-builder --force-clean --repo="$REPO_DIR" --default-branch="$FLATPAK_BRANCH" "$BUILD_DIR" "$MANIFEST"
+flatpak build-bundle "$REPO_DIR" "$BUNDLE_PATH" "$APP_ID" "$FLATPAK_BRANCH"
 
 printf 'Flatpak bundle created at %s\n' "$BUNDLE_PATH"
