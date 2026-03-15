@@ -156,7 +156,7 @@ COMMON_ARGS=(
     --vendor "CircuitSim"
     --description "Interactive, real-time circuit simulator"
     --add-modules "$MODULES"
-    --java-options=-Dfile.encoding=UTF-8
+    --java-options "-Dfile.encoding=UTF-8"
 )
 
 "$JPACKAGE_BIN" --type app-image "${COMMON_ARGS[@]}"
