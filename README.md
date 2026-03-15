@@ -124,6 +124,12 @@ Build only the RPM package:
 ./scripts/package-linux.sh --type rpm
 ```
 
+Build the Flatpak bundle:
+
+```sh
+./scripts/package-flatpak.sh
+```
+
 If you only want to verify the jar build on a machine without `jpackage` installed:
 
 ```sh
@@ -135,7 +141,9 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - The Linux package identifier uses the distro-friendly name `circuitsim`.
 - `./scripts/package-linux.sh` now defaults to the broadest Linux output set: app image + `.tar.gz` + `.deb` + `.rpm`.
 - The `.tar.gz` archive is the closest thing to an all-distro option because it just extracts and runs with the bundled runtime.
+- Flatpak support is included through `scripts/package-flatpak.sh`, which builds `com.blazinghotcode.CircuitSim` for distro-agnostic desktop installs.
 - Building `.deb` packages usually requires `fakeroot`, and `.rpm` packages require `rpm`/`rpmbuild`, to be available on the build machine.
+- Building the Flatpak bundle requires `flatpak`, `flatpak-builder`, and the `org.freedesktop` 24.08 runtime/sdk plus the `openjdk21` SDK extension.
 
 ## Development Workflow
 
@@ -149,7 +157,7 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - The workflow file is `/.github/workflows/package.yml`.
 - Uploaded artifacts include:
   - Windows: installer `.exe` plus portable app image
-  - Linux: `.deb`, `.rpm`, portable `.tar.gz`, plus portable app image
+  - Linux: `.deb`, `.rpm`, Flatpak `.flatpak`, portable `.tar.gz`, plus portable app image
 - Tagged releases use `/.github/workflows/release.yml` to publish a GitHub Release with Windows and Linux downloads attached.
 - The release body uses `release-notes/<version>.md` when present.
 - To publish a release, update `build/version.txt`, commit the release changes, then push a matching tag such as `v1.1.3`.

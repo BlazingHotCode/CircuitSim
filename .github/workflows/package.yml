@@ -62,12 +62,15 @@ jobs:
       - name: Install Linux packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y fakeroot rpm
+          sudo apt-get install -y fakeroot rpm flatpak flatpak-builder
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.freedesktop.Sdk.Extension.openjdk21//24.08
 
       - name: Build Linux packages
         run: |
-          chmod +x ./scripts/build-jar.sh ./scripts/package-linux.sh ./scripts/run-dev.sh
+          chmod +x ./scripts/build-jar.sh ./scripts/package-linux.sh ./scripts/package-flatpak.sh ./scripts/run-dev.sh
           ./scripts/package-linux.sh
+          ./scripts/package-flatpak.sh
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
@@ -78,4 +81,5 @@ jobs:
             build/package/linux/circuitsim-*.rpm
             build/package/linux/CircuitSim-linux-portable-*.tar.gz
             build/package/linux/CircuitSim/**
+            build/package/flatpak/*.flatpak
           if-no-files-found: error
