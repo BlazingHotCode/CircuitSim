@@ -1497,6 +1497,7 @@ public class CircuitPanel extends JPanel {
         Float resistance = null;
         Float capacitance = null;
         Float inductance = null;
+        Float gain = null;
         Float powerWatt = null;
         Boolean burnedOut = null;
         Float wiperPosition = null;
@@ -1509,6 +1510,7 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
             case circuitsim.components.electrical.Capacitor capacitor -> capacitance = capacitor.getCapacitanceFarad();
             case circuitsim.components.electrical.Inductor inductor -> inductance = inductor.getInductanceHenry();
+            case circuitsim.components.electrical.NpnTransistor transistor -> gain = transistor.getGain();
             case circuitsim.components.electrical.Diode diode -> voltage = diode.getForwardVoltage();
             case circuitsim.components.electrical.PowerUser powerUser -> {
                 voltage = powerUser.getTargetVoltage();
@@ -1538,7 +1540,7 @@ public class CircuitPanel extends JPanel {
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
                 component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
-                voltage, internalResistance, resistance, capacitance, inductance, powerWatt, burnedOut, wiperPosition, closed);
+                voltage, internalResistance, resistance, capacitance, inductance, gain, powerWatt, burnedOut, wiperPosition, closed);
     }
 
     /**
@@ -1644,6 +1646,11 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.Inductor inductor -> {
                 if (state.getInductance() != null) {
                     inductor.setInductanceHenry(state.getInductance());
+                }
+            }
+            case circuitsim.components.electrical.NpnTransistor transistor -> {
+                if (state.getGain() != null) {
+                    transistor.setGain(state.getGain());
                 }
             }
             case circuitsim.components.electrical.Diode diode -> {

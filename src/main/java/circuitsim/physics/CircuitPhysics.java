@@ -9,6 +9,7 @@ import circuitsim.components.electrical.Diode;
 import circuitsim.components.electrical.Ground;
 import circuitsim.components.electrical.Inductor;
 import circuitsim.components.electrical.LightBulb;
+import circuitsim.components.electrical.NpnTransistor;
 import circuitsim.components.electrical.PowerUser;
 import circuitsim.components.electrical.Resistor;
 import circuitsim.components.electrical.VariableResistor;
@@ -40,6 +41,10 @@ public final class CircuitPhysics {
     private static final double DIODE_ON_RESISTANCE = 0.05;
     private static final double DIODE_OFF_RESISTANCE = 1e9;
     private static final double DIODE_HYSTERESIS = 0.05;
+    private static final double NPN_ON_RESISTANCE_MIN = 0.05;
+    private static final double NPN_OFF_RESISTANCE = 1e9;
+    private static final double NPN_BASE_THRESHOLD = 0.7;
+    private static final double NPN_HYSTERESIS = 0.05;
     private static final double INDUCTOR_MIN_CONDUCTANCE = 1e-9;
     /**
      * Prevent instantiation.
@@ -184,6 +189,22 @@ public final class CircuitPhysics {
                             component.getConnectionPointWorldX(points.get(1)),
                             component.getConnectionPointWorldY(points.get(1)));
                     edges.add(new Edge(aIndex, bIndex, MIN_RESISTANCE, inductor));
+                }
+                case NpnTransistor transistor -> {
+                    List<ConnectionPoint> points = transistor.getConnectionPoints();
+                    if (points.size() < 3) {
+                        break;
+                    }
+                    int baseIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(0)),
+                            component.getConnectionPointWorldY(points.get(0)));
+                    int collectorIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(1)),
+                            component.getConnectionPointWorldY(points.get(1)));
+                    int emitterIndex = getNodeIndex(nodeIndex,
+                            component.getConnectionPointWorldX(points.get(2)),
+                            component.getConnectionPointWorldY(points.get(2)));
+                    edges.add(new Edge(collectorIndex, emitterIndex, NPN_OFF_RESISTANCE, transistor, baseIndex));
                 }
                 case LightBulb lightBulb -> {
                     List<ConnectionPoint> points = lightBulb.getConnectionPoints();
@@ -447,6 +468,31 @@ public final class CircuitPhysics {
 
             double[] nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
                     pruned.groundIndex, stableTimeStep);
+            if (nodeVoltages != null) {
+                for (int iteration = 0; iteration < 4; iteration++) {
+                    boolean transistorStateChanged = false;
+                    for (Edge edge : pruned.edges) {
+                        if (edge.npnTransistor == null || edge.controlIndex < 0
+                                || edge.controlIndex >= nodeVoltages.length
+                                || edge.bIndex < 0 || edge.bIndex >= nodeVoltages.length) {
+                            continue;
+                        }
+                        float updatedBaseEmitterVoltage = (float) (nodeVoltages[edge.controlIndex] - nodeVoltages[edge.bIndex]);
+                        if (Math.abs(updatedBaseEmitterVoltage - edge.npnTransistor.getPreviousBaseEmitterVoltage()) > 1e-4f) {
+                            edge.npnTransistor.setPreviousBaseEmitterVoltage(updatedBaseEmitterVoltage);
+                            transistorStateChanged = true;
+                        }
+                    }
+                    if (!transistorStateChanged) {
+                        break;
+                    }
+                    nodeVoltages = solveNodeVoltages(pruned.nodeCount, pruned.edges, pruned.batteries,
+                            pruned.groundIndex, stableTimeStep);
+                    if (nodeVoltages == null) {
+                        break;
+                    }
+                }
+            }
             if (nodeVoltages == null) {
                 for (Map.Entry<Battery, int[]> snapshot : batteryIndexSnapshot.entrySet()) {
                     snapshot.getKey().setPositiveNodeIndex(snapshot.getValue()[0]);
@@ -508,6 +554,16 @@ public final class CircuitPhysics {
                     edge.inductor.setComputedVoltage((float) Math.abs(voltage));
                     edge.inductor.setComputedAmpere((float) absCurrent);
                     edge.inductor.setPreviousCurrent((float) current);
+                }
+                if (edge.npnTransistor != null) {
+                    double baseEmitterVoltage = 0.0;
+                    if (edge.controlIndex >= 0 && edge.controlIndex < nodeVoltages.length) {
+                        baseEmitterVoltage = nodeVoltages[edge.controlIndex] - vb;
+                    }
+                    edge.npnTransistor.setComputedCollectorEmitterVoltage((float) Math.abs(voltage));
+                    edge.npnTransistor.setComputedCollectorCurrent((float) absCurrent);
+                    edge.npnTransistor.setComputedBaseEmitterVoltage((float) Math.abs(baseEmitterVoltage));
+                    edge.npnTransistor.setPreviousBaseEmitterVoltage((float) baseEmitterVoltage);
                 }
                 if (edge.lightBulb != null) {
                     float absVoltage = (float) Math.abs(voltage);
@@ -741,6 +797,12 @@ public final class CircuitPhysics {
                 edge.inductor.setComputedAmpere(0f);
                 edge.inductor.setPreviousCurrent(0f);
             }
+            if (edge.npnTransistor != null) {
+                edge.npnTransistor.setComputedCollectorEmitterVoltage(0f);
+                edge.npnTransistor.setComputedCollectorCurrent(0f);
+                edge.npnTransistor.setComputedBaseEmitterVoltage(0f);
+                edge.npnTransistor.setPreviousBaseEmitterVoltage(0f);
+            }
             if (edge.lightBulb != null) {
                 edge.lightBulb.setComputedVoltage(0f);
                 edge.lightBulb.setComputedAmpere(0f);
@@ -788,6 +850,12 @@ public final class CircuitPhysics {
                 edge.inductor.setComputedVoltage(0f);
                 edge.inductor.setComputedAmpere(0f);
                 edge.inductor.setPreviousCurrent(0f);
+            }
+            if (edge.npnTransistor != null && !pruned.npnTransistors.contains(edge.npnTransistor)) {
+                edge.npnTransistor.setComputedCollectorEmitterVoltage(0f);
+                edge.npnTransistor.setComputedCollectorCurrent(0f);
+                edge.npnTransistor.setComputedBaseEmitterVoltage(0f);
+                edge.npnTransistor.setPreviousBaseEmitterVoltage(0f);
             }
             if (edge.lightBulb != null && !pruned.lightBulbs.contains(edge.lightBulb)) {
                 edge.lightBulb.setComputedVoltage(0f);
@@ -1434,6 +1502,9 @@ public final class CircuitPhysics {
         if (edge.diode != null) {
             return 1.0 / getDiodeResistance(edge.diode);
         }
+        if (edge.npnTransistor != null) {
+            return 1.0 / getNpnResistance(edge.npnTransistor);
+        }
         if (edge.inductor != null) {
             return getInductorConductance(edge.inductor, timeStepSeconds);
         }
@@ -1462,10 +1533,29 @@ public final class CircuitPhysics {
         if (edge.diode != null) {
             return Math.max(0.0, (voltage - edge.diode.getForwardVoltage()) / getDiodeResistance(edge.diode));
         }
+        if (edge.npnTransistor != null) {
+            double resistance = getNpnResistance(edge.npnTransistor);
+            if (resistance >= NPN_OFF_RESISTANCE) {
+                return 0.0;
+            }
+            return Math.max(0.0, voltage / resistance);
+        }
         if (edge.inductor != null) {
             return edge.inductor.getPreviousCurrent() + (getInductorConductance(edge.inductor, timeStepSeconds) * voltage);
         }
         return voltage / edge.resistance;
+    }
+
+    private static double getNpnResistance(NpnTransistor transistor) {
+        if (transistor == null) {
+            return NPN_OFF_RESISTANCE;
+        }
+        double vbe = transistor.getPreviousBaseEmitterVoltage();
+        if (vbe < (NPN_BASE_THRESHOLD - NPN_HYSTERESIS)) {
+            return NPN_OFF_RESISTANCE;
+        }
+        double gain = Math.max(1.0, transistor.getGain());
+        return Math.max(NPN_ON_RESISTANCE_MIN, 10.0 / gain);
     }
 
     private static double getInductorConductance(Inductor inductor, double timeStepSeconds) {
@@ -1587,6 +1677,8 @@ public final class CircuitPhysics {
         private final PowerUser powerUser;
         private final Capacitor capacitor;
         private final Diode diode;
+        private final NpnTransistor npnTransistor;
+        private final int controlIndex;
         private final Inductor inductor;
         private final LightBulb lightBulb;
         private final Ammeter ammeter;
@@ -1606,6 +1698,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1627,6 +1721,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1648,6 +1744,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1669,6 +1767,8 @@ public final class CircuitPhysics {
             this.powerUser = powerUser;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1690,6 +1790,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = capacitor;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1705,6 +1807,25 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = diode;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
+            this.inductor = null;
+            this.lightBulb = null;
+            this.ammeter = null;
+            this.circuitSwitch = null;
+        }
+
+        private Edge(int aIndex, int bIndex, double resistance, NpnTransistor npnTransistor, int controlIndex) {
+            this.aIndex = aIndex;
+            this.bIndex = bIndex;
+            this.resistance = resistance;
+            this.wire = null;
+            this.resistor = null;
+            this.powerUser = null;
+            this.capacitor = null;
+            this.diode = null;
+            this.npnTransistor = npnTransistor;
+            this.controlIndex = controlIndex;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1720,6 +1841,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = inductor;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1741,6 +1864,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = lightBulb;
             this.ammeter = null;
@@ -1762,6 +1887,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = ammeter;
@@ -1783,6 +1910,8 @@ public final class CircuitPhysics {
             this.powerUser = null;
             this.capacitor = null;
             this.diode = null;
+            this.npnTransistor = null;
+            this.controlIndex = -1;
             this.inductor = null;
             this.lightBulb = null;
             this.ammeter = null;
@@ -1804,6 +1933,7 @@ public final class CircuitPhysics {
         private final java.util.Set<PowerUser> powerUsers;
         private final java.util.Set<Capacitor> capacitors;
         private final java.util.Set<Diode> diodes;
+        private final java.util.Set<NpnTransistor> npnTransistors;
         private final java.util.Set<Inductor> inductors;
         private final java.util.Set<LightBulb> lightBulbs;
         private final java.util.Set<Ammeter> ammeters;
@@ -1825,6 +1955,7 @@ public final class CircuitPhysics {
         private GraphView(int nodeCount, int groundIndex, int positiveIndex, List<Edge> edges,
                 List<Battery> batteries, java.util.Set<Wire> wires, java.util.Set<Resistor> resistors,
                 java.util.Set<PowerUser> powerUsers, java.util.Set<Capacitor> capacitors, java.util.Set<Diode> diodes,
+                java.util.Set<NpnTransistor> npnTransistors,
                 java.util.Set<Inductor> inductors,
                 java.util.Set<LightBulb> lightBulbs, java.util.Set<Ammeter> ammeters,
                 java.util.Set<SwitchLike> switches, int[] nodeRemap) {
@@ -1838,6 +1969,7 @@ public final class CircuitPhysics {
             this.powerUsers = powerUsers;
             this.capacitors = capacitors;
             this.diodes = diodes;
+            this.npnTransistors = npnTransistors;
             this.inductors = inductors;
             this.lightBulbs = lightBulbs;
             this.ammeters = ammeters;
@@ -1933,6 +2065,7 @@ public final class CircuitPhysics {
         java.util.Set<PowerUser> prunedPowerUsers = new java.util.HashSet<>();
         java.util.Set<Capacitor> prunedCapacitors = new java.util.HashSet<>();
         java.util.Set<Diode> prunedDiodes = new java.util.HashSet<>();
+        java.util.Set<NpnTransistor> prunedNpnTransistors = new java.util.HashSet<>();
         java.util.Set<Inductor> prunedInductors = new java.util.HashSet<>();
         java.util.Set<LightBulb> prunedLightBulbs = new java.util.HashSet<>();
         java.util.Set<Ammeter> prunedAmmeters = new java.util.HashSet<>();
@@ -1957,6 +2090,10 @@ public final class CircuitPhysics {
                 } else if (edge.diode != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.diode);
                     prunedDiodes.add(edge.diode);
+                } else if (edge.npnTransistor != null) {
+                    remapped = new Edge(a, b, edge.resistance, edge.npnTransistor,
+                            remapNodeIndex(edge.controlIndex, remap));
+                    prunedNpnTransistors.add(edge.npnTransistor);
                 } else if (edge.inductor != null) {
                     remapped = new Edge(a, b, edge.resistance, edge.inductor);
                     prunedInductors.add(edge.inductor);
@@ -1990,11 +2127,19 @@ public final class CircuitPhysics {
         if (remappedGround < 0 || remappedPositive < 0) {
             return new GraphView(0, remappedGround, remappedPositive, java.util.Collections.emptyList(),
                     java.util.Collections.emptyList(), prunedWires, prunedResistors, prunedPowerUsers,
-                    prunedCapacitors, prunedDiodes, prunedInductors, prunedLightBulbs, prunedAmmeters, prunedSwitches,
+                    prunedCapacitors, prunedDiodes, prunedNpnTransistors, prunedInductors,
+                    prunedLightBulbs, prunedAmmeters, prunedSwitches,
                     remap);
         }
         return new GraphView(newCount, remappedGround, remappedPositive, prunedEdges,
                 prunedBatteries, prunedWires, prunedResistors, prunedPowerUsers, prunedCapacitors, prunedDiodes,
-                prunedInductors, prunedLightBulbs, prunedAmmeters, prunedSwitches, remap);
+                prunedNpnTransistors, prunedInductors, prunedLightBulbs, prunedAmmeters, prunedSwitches, remap);
+    }
+
+    private static int remapNodeIndex(int nodeIndex, int[] nodeRemap) {
+        if (nodeIndex < 0 || nodeIndex >= nodeRemap.length) {
+            return -1;
+        }
+        return nodeRemap[nodeIndex];
     }
 }
