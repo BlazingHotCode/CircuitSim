@@ -1,5 +1,9 @@
 # Compiled class file
 *.class
+out/
+build/package/
+build/package-input/
+dist/manifest.generated.txt
 
 # Maven build output
 target/

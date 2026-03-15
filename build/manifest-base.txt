@@ -1,0 +1,2 @@
+Main-Class: circuitsim.CircuitSim
+Implementation-Title: CircuitSim
