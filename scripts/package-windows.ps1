@@ -165,6 +165,13 @@ function Add-WixToolsToPathIfNeeded {
     return $true
 }
 
+function Write-Step {
+    param([string]$Message)
+
+    Write-Host "==> $Message"
+}
+
+Write-Step 'Checking required tools'
 Require-Command javac
 Require-Command jar
 Require-Command jdeps
@@ -173,6 +180,7 @@ $javacPath = Require-JavaToolPath 'javac'
 $jarPath = Require-JavaToolPath 'jar'
 $jdepsPath = Require-JavaToolPath 'jdeps'
 
+Write-Step 'Reading version metadata'
 $version = Get-Version
 $versionedJar = Join-Path $distDir "$appName-$version.jar"
 $mainJar = Join-Path $distDir "$appName.jar"
@@ -194,15 +202,18 @@ if ($sources.Count -eq 0) {
     throw "No Java sources found under $srcDir"
 }
 
+Write-Step 'Compiling Java sources'
 & $javacPath --release 21 -d $outDir $sources
 if ($LASTEXITCODE -ne 0) {
     throw 'javac failed'
 }
 
 if (Test-Path $resourcesDir) {
+    Write-Step 'Copying application resources'
     Copy-Item (Join-Path $resourcesDir '*') $outDir -Recurse -Force
 }
 
+Write-Step 'Generating application jars'
 $manifestBase = (Get-Content $manifestBaseFile -Raw).TrimEnd([char[]]"`r`n")
 Set-Content -Path $manifestFile -Value ($manifestBase + "`r`nImplementation-Version: $version`r`n") -Encoding ascii
 
@@ -218,6 +229,7 @@ if ([string]::IsNullOrWhiteSpace($modules)) {
     $modules = 'java.base,java.desktop'
 }
 
+Write-Step 'Preparing packaging input'
 if (Test-Path $inputDir) {
     Remove-Item $inputDir -Recurse -Force
 }
@@ -227,7 +239,7 @@ New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
 Copy-Item $mainJar (Join-Path $inputDir "$appName.jar") -Force
 
 $appImageDir = Join-Path $DestDir $appName
-if (Test-Path $appImageDir) {
+if (($Type -eq 'app-image' -or $Type -eq 'both') -and (Test-Path $appImageDir)) {
     Remove-Item $appImageDir -Recurse -Force
 }
 
@@ -241,6 +253,7 @@ if ($SkipJPackage) {
     exit 0
 }
 
+Write-Step 'Resolving jpackage'
 $jpackagePath = Require-JavaToolPath 'jpackage'
 
 $commonArgs = @(
@@ -263,12 +276,16 @@ if (Test-Path $iconPath) {
     $commonArgs += @('--icon', $iconPath)
 }
 
-& $jpackagePath --type app-image @commonArgs
-if ($LASTEXITCODE -ne 0) {
-    throw 'jpackage app-image failed'
+if ($Type -eq 'app-image' -or $Type -eq 'both') {
+    Write-Step 'Building Windows app-image'
+    & $jpackagePath --type app-image @commonArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw 'jpackage app-image failed'
+    }
 }
 
 if ($Type -eq 'exe' -or $Type -eq 'both') {
+    Write-Step 'Checking WiX Toolset'
     if (-not (Add-WixToolsToPathIfNeeded)) {
         throw @"
 WiX Toolset v3 is required to build the Windows installer .exe.
@@ -286,10 +303,12 @@ If you only want the portable build, run:
 "@
     }
 
+    Write-Step 'Building Windows installer exe'
     & $jpackagePath --type exe --win-shortcut --win-menu --win-menu-group $menuGroup --win-upgrade-uuid $upgradeUuid @commonArgs
     if ($LASTEXITCODE -ne 0) {
         throw 'jpackage exe failed'
     }
 }
 
+Write-Step 'Packaging complete'
 Write-Host "Windows packages created in $DestDir"
