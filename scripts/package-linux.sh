@@ -133,6 +133,12 @@ rm -rf "$INPUT_DIR"
 mkdir -p "$INPUT_DIR" "$DEST_DIR"
 cp "$MAIN_JAR" "$INPUT_DIR/$APP_NAME.jar"
 
+APP_IMAGE_DIR="$DEST_DIR/$APP_NAME"
+DEB_PACKAGE="$DEST_DIR/${PACKAGE_NAME}_${VERSION}-1_amd64.deb"
+
+rm -rf "$APP_IMAGE_DIR"
+rm -f "$DEB_PACKAGE"
+
 if [[ $SKIP_JPACKAGE -eq 1 ]]; then
     printf 'Built jar only. Skipped jpackage. Required modules: %s\n' "$MODULES"
     exit 0

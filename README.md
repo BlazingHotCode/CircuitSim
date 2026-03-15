@@ -118,6 +118,14 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - Dev builds do not require packaging, installers, or bundled runtimes.
 - Packaged releases are an extra release step for end users, not a replacement for the source-based workflow.
 
+## GitHub Actions
+
+- GitHub Actions now builds bundled-runtime packages on both Windows and Linux when you push to `main` or trigger the workflow manually.
+- The workflow file is `/.github/workflows/package.yml`.
+- Uploaded artifacts include:
+  - Windows: installer `.exe` plus portable app image
+  - Linux: `.deb` plus portable app image
+
 ## How To Use
 
 1. Open the component bar (Tab) and pick a component group.

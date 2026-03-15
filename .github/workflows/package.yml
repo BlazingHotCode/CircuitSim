@@ -1,0 +1,79 @@
+name: Package Builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  windows:
+    name: Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install WiX Toolset v3
+        shell: powershell
+        run: |
+          choco install wixtoolset --version=3.14.1 --no-progress -y
+          $wixBin = 'C:\Program Files (x86)\WiX Toolset v3.14\bin'
+          if (-not (Test-Path $wixBin)) {
+            throw "WiX bin directory not found at $wixBin"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $wixBin
+
+      - name: Build Windows packages
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-windows
+          path: |
+            build/package/windows/CircuitSim-*.exe
+            build/package/windows/CircuitSim/**
+          if-no-files-found: error
+
+  linux:
+    name: Linux Packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot
+
+      - name: Build Linux packages
+        run: |
+          chmod +x ./scripts/build-jar.sh ./scripts/package-linux.sh ./scripts/run-dev.sh
+          ./scripts/package-linux.sh
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-linux
+          path: |
+            build/package/linux/circuitsim_*.deb
+            build/package/linux/CircuitSim/**
+          if-no-files-found: error
