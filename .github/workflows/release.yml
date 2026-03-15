@@ -222,7 +222,7 @@ jobs:
           name: CircuitSim ${{ needs.prepare.outputs.version }}
           body_path: release-body/release-body.md
           files: |
-            release-assets/windows/*
-            release-assets/linux/*
-            release-assets/jar/*
+            release-assets/windows/**/*
+            release-assets/linux/**/*
+            release-assets/jar/**/*
           fail_on_unmatched_files: true
