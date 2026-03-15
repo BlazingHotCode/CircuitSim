@@ -15,6 +15,7 @@ $rootDir = Split-Path -Parent $scriptDir
 $versionFile = Join-Path $rootDir 'build\version.txt'
 $manifestBaseFile = Join-Path $rootDir 'build\manifest-base.txt'
 $srcDir = Join-Path $rootDir 'src\main\java'
+$resourcesDir = Join-Path $rootDir 'src\main\resources'
 $outDir = Join-Path $rootDir 'out'
 $distDir = Join-Path $rootDir 'dist'
 $inputDir = Join-Path $rootDir 'build\package-input\windows'
@@ -194,6 +195,10 @@ if ($sources.Count -eq 0) {
 & $javacPath --release 21 -d $outDir $sources
 if ($LASTEXITCODE -ne 0) {
     throw 'javac failed'
+}
+
+if (Test-Path $resourcesDir) {
+    Copy-Item (Join-Path $resourcesDir '*') $outDir -Recurse -Force
 }
 
 $manifestBase = (Get-Content $manifestBaseFile -Raw).TrimEnd([char[]]"`r`n")

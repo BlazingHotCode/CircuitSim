@@ -17,11 +17,15 @@ import circuitsim.ui.TempModePanel;
 import circuitsim.ui.WirePalettePanel;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Image;
+import java.awt.Taskbar;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.io.InputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JLayeredPane;
 import javax.swing.JOptionPane;
@@ -34,6 +38,7 @@ public class CircuitSim {
     private static final int WINDOW_WIDTH = 800;
     private static final int WINDOW_HEIGHT = 600;
     private static final int PANEL_PADDING = 8;
+    private static final String APP_ICON_RESOURCE = "/circuitsim/icon.png";
 
     /**
      * Launches the CircuitSim application.
@@ -44,6 +49,7 @@ public class CircuitSim {
 
     private static void startApp() {
         JFrame frame = createMainFrame();
+        applyAppIcon(frame);
         ComponentPropertiesPanel propertiesPanel = new ComponentPropertiesPanel();
         CustomComponentLibrary library = new CustomComponentLibrary();
 
@@ -229,6 +235,34 @@ public class CircuitSim {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());
         return frame;
+    }
+
+    private static void applyAppIcon(JFrame frame) {
+        Image icon = loadAppIcon();
+        if (icon == null) {
+            return;
+        }
+        frame.setIconImage(icon);
+        if (Taskbar.isTaskbarSupported()) {
+            Taskbar taskbar = Taskbar.getTaskbar();
+            if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                try {
+                    taskbar.setIconImage(icon);
+                } catch (UnsupportedOperationException | SecurityException ignored) {
+                }
+            }
+        }
+    }
+
+    private static Image loadAppIcon() {
+        try (InputStream stream = CircuitSim.class.getResourceAsStream(APP_ICON_RESOURCE)) {
+            if (stream == null) {
+                return null;
+            }
+            return ImageIO.read(stream);
+        } catch (IOException ex) {
+            return null;
+        }
     }
 
     /**

@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION_FILE="$ROOT_DIR/build/version.txt"
 MANIFEST_BASE_FILE="$ROOT_DIR/build/manifest-base.txt"
 SRC_DIR="$ROOT_DIR/src/main/java"
+RESOURCES_DIR="$ROOT_DIR/src/main/resources"
 OUT_DIR="$ROOT_DIR/out"
 DIST_DIR="$ROOT_DIR/dist"
 APP_NAME="CircuitSim"
@@ -71,6 +72,10 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR" "$DIST_DIR"
 
 "$JAVAC_BIN" --release 21 -d "$OUT_DIR" "${SOURCES[@]}"
+
+if [[ -d "$RESOURCES_DIR" ]]; then
+    cp -R "$RESOURCES_DIR"/. "$OUT_DIR"/
+fi
 
 cp "$MANIFEST_BASE_FILE" "$MANIFEST_FILE"
 printf 'Implementation-Version: %s\n' "$VERSION" >> "$MANIFEST_FILE"
