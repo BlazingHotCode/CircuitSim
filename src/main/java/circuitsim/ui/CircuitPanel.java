@@ -128,6 +128,12 @@ public class CircuitPanel extends JPanel {
     boolean draggingWithoutWires;
     boolean detachedWiresForShiftDrag;
     private final CoordinatesOverlay coordinatesOverlay = new CoordinatesOverlay();
+    private static final int SIMULATION_FRAMES_PER_SECOND = 60;
+    private static final int SIMULATION_SUBSTEPS = 4;
+    private static final double SIMULATION_FRAME_SECONDS = 1.0 / SIMULATION_FRAMES_PER_SECOND;
+    private static final double SIMULATION_STEP_SECONDS = SIMULATION_FRAME_SECONDS / SIMULATION_SUBSTEPS;
+    private final javax.swing.Timer simulationTimer;
+    private boolean simulationPaused;
 
     /**
      * @param propertiesPanel panel used to edit component properties
@@ -173,6 +179,9 @@ public class CircuitPanel extends JPanel {
         configureLoadKeyBindings();
         configureUndoRedoKeyBindings();
         configureComponentBarKeyBindings();
+        configureSimulationKeyBindings();
+        simulationTimer = new javax.swing.Timer(1000 / SIMULATION_FRAMES_PER_SECOND, e -> advanceSimulationFrame());
+        simulationTimer.start();
         if (enableAutosave) {
             history.initializeAutosavePath();
             history.attemptLoadAutosave(this::applyBoardState, this::resetHistoryState);
@@ -180,6 +189,7 @@ public class CircuitPanel extends JPanel {
         if (history.isHistoryEmpty()) {
             recordHistoryState();
         }
+        runSimulationSteps(1);
     }
 
     /**
@@ -210,9 +220,20 @@ public class CircuitPanel extends JPanel {
         }
         g2.setTransform(originalTransform);
         drawCoordinatesHud(g2);
+        drawSimulationHud(g2);
         if (isShowing()) {
             repaint(33);
         }
+    }
+
+    private void drawSimulationHud(Graphics2D g2) {
+        if (!simulationPaused) {
+            return;
+        }
+        Color originalColor = g2.getColor();
+        g2.setColor(new Color(230, 190, 90));
+        g2.drawString("Simulation paused - Space resume, Period step", 12, getHeight() - 12);
+        g2.setColor(originalColor);
     }
 
     private void drawCoordinatesHud(Graphics2D g2) {
@@ -254,19 +275,44 @@ public class CircuitPanel extends JPanel {
      * Updates the circuit physics and renders all wires.
      */
     private void drawWires(Graphics2D g2) {
+        lastRenderWires = buildRenderWires();
+        for (Wire wire : wires) {
+            wire.setShortCircuit(lastShortCircuit);
+        }
+        for (RenderWire renderWire : lastRenderWires) {
+            renderWire.wire.drawAt(g2, renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2);
+            drawWireEndpointStub(g2, renderWire, true);
+            drawWireEndpointStub(g2, renderWire, false);
+        }
+        drawWireCrossings(g2, lastRenderWires);
+    }
+
+    private void advanceSimulationFrame() {
+        if (simulationPaused) {
+            repaint();
+            return;
+        }
+        runSimulationSteps(SIMULATION_SUBSTEPS);
+    }
+
+    private void stepSimulationFrame() {
+        runSimulationSteps(SIMULATION_SUBSTEPS);
+    }
+
+    private void runSimulationSteps(int stepCount) {
         SimulationViewBuilder.SimulationView simulationView = SimulationViewBuilder.build(components, wires,
                 customDefinitionResolver, this::applyComponentState);
-        // Call before simulation hooks
-        for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
-            component.beforeSimulation();
-        }
-        
-        boolean shortCircuit = CircuitPhysics.update(simulationView.components, simulationView.wires,
-                treatCustomOutputsAsGround);
-
-        // Call after simulation hooks
-        for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
-            component.afterSimulation();
+        boolean shortCircuit = false;
+        int iterations = Math.max(1, stepCount);
+        for (int i = 0; i < iterations; i++) {
+            for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
+                component.beforeSimulation();
+            }
+            shortCircuit = CircuitPhysics.update(simulationView.components, simulationView.wires,
+                    treatCustomOutputsAsGround, SIMULATION_STEP_SECONDS);
+            for (circuitsim.components.core.CircuitComponent component : simulationView.components) {
+                component.afterSimulation();
+            }
         }
         if (shortCircuit != lastShortCircuit) {
             if (shortCircuit) {
@@ -280,12 +326,7 @@ public class CircuitPanel extends JPanel {
             wire.setShortCircuit(shortCircuit);
         }
         lastRenderWires = buildRenderWires();
-        for (RenderWire renderWire : lastRenderWires) {
-            renderWire.wire.drawAt(g2, renderWire.x1, renderWire.y1, renderWire.x2, renderWire.y2);
-            drawWireEndpointStub(g2, renderWire, true);
-            drawWireEndpointStub(g2, renderWire, false);
-        }
-        drawWireCrossings(g2, lastRenderWires);
+        repaint();
     }
 
     private void drawWireEndpointStub(Graphics2D g2, RenderWire renderWire, boolean start) {
@@ -878,6 +919,29 @@ public class CircuitPanel extends JPanel {
         actionMap.put("moveSelectionDown", new SelectionMoveAction(hasSelection, () -> moveSelectionStep(0, Grid.SIZE)));
     }
 
+    private void configureSimulationKeyBindings() {
+        javax.swing.InputMap inputMap = getInputMap(JComponent.WHEN_FOCUSED);
+        javax.swing.ActionMap actionMap = getActionMap();
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "toggleSimulationPause");
+        inputMap.put(javax.swing.KeyStroke.getKeyStroke(KeyEvent.VK_PERIOD, 0), "stepSimulation");
+        actionMap.put("toggleSimulationPause", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                simulationPaused = !simulationPaused;
+                repaint();
+            }
+        });
+        actionMap.put("stepSimulation", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (!simulationPaused) {
+                    simulationPaused = true;
+                }
+                stepSimulationFrame();
+            }
+        });
+    }
+
     private void moveSelectionStep(int dx, int dy) {
         moveSelectionBy(dx, dy);
         recordHistoryState();
@@ -1432,6 +1496,7 @@ public class CircuitPanel extends JPanel {
         Float internalResistance = null;
         Float resistance = null;
         Float capacitance = null;
+        Float inductance = null;
         Float powerWatt = null;
         Boolean burnedOut = null;
         Float wiperPosition = null;
@@ -1443,6 +1508,7 @@ public class CircuitPanel extends JPanel {
             }
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
             case circuitsim.components.electrical.Capacitor capacitor -> capacitance = capacitor.getCapacitanceFarad();
+            case circuitsim.components.electrical.Inductor inductor -> inductance = inductor.getInductanceHenry();
             case circuitsim.components.electrical.Diode diode -> voltage = diode.getForwardVoltage();
             case circuitsim.components.electrical.PowerUser powerUser -> {
                 voltage = powerUser.getTargetVoltage();
@@ -1472,7 +1538,7 @@ public class CircuitPanel extends JPanel {
         return new BoardState.ComponentState(type, component.getX(), component.getY(),
                 component.getWidth(), component.getHeight(), component.getRotationQuarterTurns(),
                 component.getDisplayName(), customId, component.isShowTitle(), component.isShowingPropertyValues(),
-                voltage, internalResistance, resistance, capacitance, powerWatt, burnedOut, wiperPosition, closed);
+                voltage, internalResistance, resistance, capacitance, inductance, powerWatt, burnedOut, wiperPosition, closed);
     }
 
     /**
@@ -1573,6 +1639,11 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.Capacitor capacitor -> {
                 if (state.getCapacitance() != null) {
                     capacitor.setCapacitanceFarad(state.getCapacitance());
+                }
+            }
+            case circuitsim.components.electrical.Inductor inductor -> {
+                if (state.getInductance() != null) {
+                    inductor.setInductanceHenry(state.getInductance());
                 }
             }
             case circuitsim.components.electrical.Diode diode -> {

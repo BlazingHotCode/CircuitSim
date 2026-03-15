@@ -88,6 +88,7 @@ public final class BoardStateIO {
             appendOptionalNumberField(out, firstField, "internalResistance", component.getInternalResistance());
             appendOptionalNumberField(out, firstField, "resistance", component.getResistance());
             appendOptionalNumberField(out, firstField, "capacitance", component.getCapacitance());
+            appendOptionalNumberField(out, firstField, "inductance", component.getInductance());
             appendOptionalNumberField(out, firstField, "powerWatt", component.getPowerWatt());
             appendOptionalBooleanField(out, firstField, "burnedOut", component.getBurnedOut());
             appendOptionalNumberField(out, firstField, "wiperPosition", component.getWiperPosition());
@@ -193,13 +194,14 @@ public final class BoardStateIO {
             Float internalResistance = getFloat(map, "internalResistance");
             Float resistance = getFloat(map, "resistance");
             Float capacitance = getFloat(map, "capacitance");
+            Float inductance = getFloat(map, "inductance");
             Float powerWatt = getFloat(map, "powerWatt");
             Boolean burnedOut = getBooleanObject(map, "burnedOut");
             Float wiperPosition = getFloat(map, "wiperPosition");
             Boolean closed = getBooleanObject(map, "closed");
             result.add(new BoardState.ComponentState(type, x, y, width, height, rotation,
                     displayName, customId, showTitle, showValues, voltage, internalResistance, resistance,
-                    capacitance, powerWatt, burnedOut, wiperPosition, closed));
+                    capacitance, inductance, powerWatt, burnedOut, wiperPosition, closed));
         }
         return result;
     }

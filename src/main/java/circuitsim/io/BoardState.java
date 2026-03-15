@@ -108,6 +108,7 @@ public final class BoardState {
         private final Float internalResistance;
         private final Float resistance;
         private final Float capacitance;
+        private final Float inductance;
         private final Float powerWatt;
         private final Boolean burnedOut;
         private final Float wiperPosition;
@@ -132,7 +133,7 @@ public final class BoardState {
                               String displayName, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
             this(type, x, y, width, height, rotationQuarterTurns, displayName, null,
-                    showTitle, showValues, voltage, internalResistance, resistance, null, null, null, null, closed);
+                    showTitle, showValues, voltage, internalResistance, resistance, null, null, null, null, null, closed);
         }
 
         /**
@@ -156,7 +157,7 @@ public final class BoardState {
                               String displayName, String customId, boolean showTitle, boolean showValues,
                               Float voltage, Float internalResistance, Float resistance, Boolean closed) {
             this(type, x, y, width, height, rotationQuarterTurns, displayName, customId, showTitle, showValues,
-                    voltage, internalResistance, resistance, null, null, null, null, closed);
+                    voltage, internalResistance, resistance, null, null, null, null, null, closed);
         }
 
         /**
@@ -174,6 +175,7 @@ public final class BoardState {
          * @param internalResistance battery internal resistance (optional)
          * @param resistance resistor resistance (optional)
          * @param capacitance capacitor capacitance (optional)
+         * @param inductance inductor inductance (optional)
          * @param powerWatt constant-power load wattage (optional)
          * @param burnedOut light bulb burned out state (optional)
          * @param wiperPosition sliding resistor wiper position 0..1 (optional)
@@ -181,7 +183,7 @@ public final class BoardState {
          */
         public ComponentState(String type, int x, int y, int width, int height, int rotationQuarterTurns,
                               String displayName, String customId, boolean showTitle, boolean showValues,
-                              Float voltage, Float internalResistance, Float resistance, Float capacitance,
+                              Float voltage, Float internalResistance, Float resistance, Float capacitance, Float inductance,
                               Float powerWatt, Boolean burnedOut, Float wiperPosition, Boolean closed) {
             this.type = type;
             this.x = x;
@@ -197,6 +199,7 @@ public final class BoardState {
             this.internalResistance = internalResistance;
             this.resistance = resistance;
             this.capacitance = capacitance;
+            this.inductance = inductance;
             this.powerWatt = powerWatt;
             this.burnedOut = burnedOut;
             this.wiperPosition = wiperPosition;
@@ -299,6 +302,13 @@ public final class BoardState {
          */
         public Float getCapacitance() {
             return capacitance;
+        }
+
+        /**
+         * @return inductor inductance, if applicable
+         */
+        public Float getInductance() {
+            return inductance;
         }
 
         /**
