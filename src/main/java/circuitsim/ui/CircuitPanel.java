@@ -1435,6 +1435,7 @@ public class CircuitPanel extends JPanel {
             }
             case circuitsim.components.electrical.Resistor resistor -> resistance = resistor.getResistance();
             case circuitsim.components.electrical.Capacitor capacitor -> capacitance = capacitor.getCapacitanceFarad();
+            case circuitsim.components.electrical.Diode diode -> voltage = diode.getForwardVoltage();
             case circuitsim.components.electrical.PowerUser powerUser -> {
                 voltage = powerUser.getTargetVoltage();
                 powerWatt = powerUser.getTargetPowerWatt();
@@ -1564,6 +1565,11 @@ public class CircuitPanel extends JPanel {
             case circuitsim.components.electrical.Capacitor capacitor -> {
                 if (state.getCapacitance() != null) {
                     capacitor.setCapacitanceFarad(state.getCapacitance());
+                }
+            }
+            case circuitsim.components.electrical.Diode diode -> {
+                if (state.getVoltage() != null) {
+                    diode.setForwardVoltage(state.getVoltage());
                 }
             }
             case circuitsim.components.electrical.PowerUser powerUser -> {
