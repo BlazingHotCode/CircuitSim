@@ -60,21 +60,6 @@ jobs:
             printf '# CircuitSim %s\n\n' "$VERSION" >> "$BODY_FILE"
           fi
 
-          CHANGELOG_SECTION="$(awk -v version="$VERSION" '
-            $0 ~ "^## " version "([[:space:]]|$)" { capture=1 }
-            capture {
-              if ($0 ~ "^## " && $0 !~ "^## " version "([[:space:]]|$)") {
-                exit
-              }
-              print
-            }
-          ' CHANGELOG.md)"
-
-          if [[ -n "$CHANGELOG_SECTION" ]]; then
-            printf '## Changelog\n\n' >> "$BODY_FILE"
-            printf '%s\n' "$CHANGELOG_SECTION" >> "$BODY_FILE"
-          fi
-
           {
             printf 'tag=%s\n' "$TAG"
             printf 'version=%s\n' "$VERSION"
