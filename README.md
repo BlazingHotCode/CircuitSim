@@ -68,6 +68,7 @@ CircuitSim can be packaged for Windows and Linux with a bundled Java runtime so 
 **Windows**
 
 Windows installer builds (`--type exe`) require WiX Toolset v3.x on the packaging machine so `candle.exe` and `light.exe` are available on `PATH`.
+The packaged launcher uses `packaging/circuitsim.ico` when that asset is present.
 
 Build an app image plus installer `.exe`:
 
@@ -88,6 +89,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 -SkipJPac
 ```
 
 **Linux**
+
+The packaged launcher uses `packaging/circuitsim.png` when that asset is present.
 
 Build both a portable app image and a `.deb` package:
 
@@ -125,6 +128,11 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - Uploaded artifacts include:
   - Windows: installer `.exe` plus portable app image
   - Linux: `.deb` plus portable app image
+
+## Packaging Assets
+
+- Packaging icons live in `packaging/circuitsim.ico` and `packaging/circuitsim.png`.
+- If you want to regenerate the default icon set on Windows, run `powershell -ExecutionPolicy Bypass -File .\scripts\generate-packaging-assets.ps1`.
 
 ## How To Use
 

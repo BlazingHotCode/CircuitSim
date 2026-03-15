@@ -12,6 +12,9 @@ DEST_DIR="$ROOT_DIR/build/package/linux"
 INPUT_DIR="$ROOT_DIR/build/package-input/linux"
 DIST_DIR="$ROOT_DIR/dist"
 MAIN_JAR="$DIST_DIR/$APP_NAME.jar"
+PACKAGING_DIR="$ROOT_DIR/packaging"
+VENDOR="BlazingHotCode"
+COPYRIGHT="Copyright (c) 2026 BlazingHotCode"
 
 usage() {
     cat <<'EOF'
@@ -153,11 +156,17 @@ COMMON_ARGS=(
     --main-jar "$APP_NAME.jar"
     --main-class circuitsim.CircuitSim
     --dest "$DEST_DIR"
-    --vendor "CircuitSim"
+    --vendor "$VENDOR"
     --description "Interactive, real-time circuit simulator"
+    --copyright "$COPYRIGHT"
     --add-modules "$MODULES"
     --java-options "-Dfile.encoding=UTF-8"
 )
+
+ICON_PATH="$PACKAGING_DIR/circuitsim.png"
+if [[ -f "$ICON_PATH" ]]; then
+    COMMON_ARGS+=(--icon "$ICON_PATH")
+fi
 
 "$JPACKAGE_BIN" --type app-image "${COMMON_ARGS[@]}"
 

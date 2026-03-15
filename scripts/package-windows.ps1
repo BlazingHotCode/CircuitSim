@@ -19,8 +19,11 @@ $outDir = Join-Path $rootDir 'out'
 $distDir = Join-Path $rootDir 'dist'
 $inputDir = Join-Path $rootDir 'build\package-input\windows'
 $defaultDestDir = Join-Path $rootDir 'build\package\windows'
+$packagingDir = Join-Path $rootDir 'packaging'
 $appName = 'CircuitSim'
 $mainClass = 'circuitsim.CircuitSim'
+$vendor = 'BlazingHotCode'
+$copyright = 'Copyright (c) 2026 BlazingHotCode'
 
 if ([string]::IsNullOrWhiteSpace($DestDir)) {
     $DestDir = $defaultDestDir
@@ -240,11 +243,17 @@ $commonArgs = @(
     '--main-jar', "$appName.jar",
     '--main-class', $mainClass,
     '--dest', $DestDir,
-    '--vendor', 'CircuitSim',
+    '--vendor', $vendor,
     '--description', 'Interactive, real-time circuit simulator',
+    '--copyright', $copyright,
     '--add-modules', $modules,
     '--java-options', '-Dfile.encoding=UTF-8'
 )
+
+$iconPath = Join-Path $packagingDir 'circuitsim.ico'
+if (Test-Path $iconPath) {
+    $commonArgs += @('--icon', $iconPath)
+}
 
 & $jpackagePath --type app-image @commonArgs
 if ($LASTEXITCODE -ne 0) {
