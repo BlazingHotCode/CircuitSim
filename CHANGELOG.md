@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.4 - 2026-03-15
+
+### Added
+- Windows installers now upgrade existing CircuitSim installs in place instead of requiring a manual uninstall.
+- Windows packaged builds now bundle the app icon into the running launcher and Start menu metadata.
+- GitHub Releases can now be published automatically from version tags using the matching release notes file.
+
+### Changed
+- Windows Start menu shortcuts are now grouped under `BlazingHotCode` instead of `Unknown`.
+- GitHub Release descriptions now come only from `release-notes/<version>.md`.
+
 ## 1.1.3 - 2026-01-28
 
 ### Changed
