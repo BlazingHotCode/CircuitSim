@@ -160,6 +160,7 @@ If you only want to verify the jar build on a machine without `jpackage` install
   - Linux: `.deb`, `.rpm`, Flatpak `.flatpak`, portable `.tar.gz`, plus portable app image
 - Tagged releases use `/.github/workflows/release.yml` to publish a GitHub Release with Windows and Linux downloads attached.
 - The release body uses `release-notes/<version>.md` when present.
+- Use `release-notes/TEMPLATE.md` as the starting point for new release notes, including install/update snippets for Windows, `.deb`, `.rpm`, portable `.tar.gz`, and Flatpak users.
 - To publish a release, update `build/version.txt`, commit the release changes, then push a matching tag such as `v1.1.3`.
 
 ## Packaging Assets
