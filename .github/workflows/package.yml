@@ -36,13 +36,28 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1
 
-      - name: Upload Windows artifacts
+      - name: Archive Windows portable app
+        shell: powershell
+        run: |
+          $version = (Get-Content .\build\version.txt -Raw).Trim()
+          $portableZip = "build/package/windows/CircuitSim-windows-portable-$version.zip"
+          if (Test-Path $portableZip) {
+            Remove-Item $portableZip -Force
+          }
+          Compress-Archive -Path build/package/windows/CircuitSim\* -DestinationPath $portableZip
+
+      - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-windows
-          path: |
-            build/package/windows/CircuitSim-*.exe
-            build/package/windows/CircuitSim/**
+          name: CircuitSim-Windows-Installer
+          path: build/package/windows/CircuitSim-*.exe
+          if-no-files-found: error
+
+      - name: Upload Windows portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-Windows-Portable
+          path: build/package/windows/CircuitSim-windows-portable-*.zip
           if-no-files-found: error
 
   linux:
