@@ -87,7 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-jar
-          path: dist/CircuitSim-${{ needs.prepare.outputs.version }}.jar
+          path: dist/CircuitSim-${{ steps.meta.outputs.version }}.jar
           if-no-files-found: error
 
   windows:
