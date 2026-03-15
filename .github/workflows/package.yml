@@ -24,7 +24,7 @@ jobs:
       - name: Install WiX Toolset v3
         shell: powershell
         run: |
-          choco install wixtoolset --version=3.14.1 --no-progress -y
+          choco upgrade wixtoolset --no-progress -y
           $wixBin = 'C:\Program Files (x86)\WiX Toolset v3.14\bin'
           if (-not (Test-Path $wixBin)) {
             throw "WiX bin directory not found at $wixBin"
