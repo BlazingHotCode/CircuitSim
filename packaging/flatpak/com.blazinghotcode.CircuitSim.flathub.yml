@@ -22,8 +22,8 @@ modules:
       - install -Dm644 com.blazinghotcode.CircuitSim.png /app/share/icons/hicolor/256x256/apps/com.blazinghotcode.CircuitSim.png
     sources:
       - type: file
-        url: https://github.com/BlazingHotCode/CircuitSim/releases/download/v1.1.4/CircuitSim-1.1.4.jar
-        sha256: 693be24ea0cf517ac3003c633d117b25be42e3322f14c1a7e6d8d9016bc758ba
+        url: https://github.com/BlazingHotCode/CircuitSim/releases/download/v1.1.5/CircuitSim-1.1.5.jar
+        sha256: 4a9010294c5380488baed52a61ebed2725dd79d328df04e8113d96997aefa0db
         dest-filename: CircuitSim.jar
       - type: file
         path: ./circuitsim.sh

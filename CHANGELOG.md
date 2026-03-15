@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.5 - 2026-03-15
+
+### Added
+- Linux releases now include `.rpm`, portable `.tar.gz`, and Flatpak packaging alongside the existing bundled-runtime formats.
+- Added a Flathub-ready Flatpak manifest and helper script for updating its release jar URL and checksum.
+- GitHub Releases now publish the versioned application jar needed by Flathub.
+
+### Changed
+- Added a reusable release-notes template with install and update instructions for every supported package format.
+
 ## 1.1.4 - 2026-03-15
 
 ### Added
