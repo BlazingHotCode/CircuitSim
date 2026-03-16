@@ -87,14 +87,42 @@ jobs:
           ./scripts/package-linux.sh
           ./scripts/package-flatpak.sh
 
-      - name: Upload Linux artifacts
+      - name: Archive Linux app image
+        run: |
+          version="$(tr -d '\r\n' < ./build/version.txt)"
+          tar -C build/package/linux -czf "build/package/linux/CircuitSim-linux-app-image-$version.tar.gz" CircuitSim
+
+      - name: Upload Linux deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-linux
-          path: |
-            build/package/linux/circuitsim_*.deb
-            build/package/linux/circuitsim-*.rpm
-            build/package/linux/CircuitSim-linux-portable-*.tar.gz
-            build/package/linux/CircuitSim/**
-            build/package/flatpak/*.flatpak
+          name: CircuitSim-Linux-DEB
+          path: build/package/linux/circuitsim_*.deb
+          if-no-files-found: error
+
+      - name: Upload Linux rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-Linux-RPM
+          path: build/package/linux/circuitsim-*.rpm
+          if-no-files-found: error
+
+      - name: Upload Linux portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-Linux-Portable
+          path: build/package/linux/CircuitSim-linux-portable-*.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Linux app-image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-Linux-AppImage
+          path: build/package/linux/CircuitSim-linux-app-image-*.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Linux flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CircuitSim-Linux-Flatpak
+          path: build/package/flatpak/*.flatpak
           if-no-files-found: error
