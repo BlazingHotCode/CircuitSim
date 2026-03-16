@@ -10,9 +10,25 @@ STAGING_DIR="$ROOT_DIR/build/package-input/flatpak"
 BUILD_DIR="$ROOT_DIR/build/flatpak/build-dir"
 REPO_DIR="$ROOT_DIR/build/flatpak/repo"
 OUTPUT_DIR="$ROOT_DIR/build/package/flatpak"
-BUNDLE_PATH="$OUTPUT_DIR/CircuitSim-linux-$VERSION.flatpak"
 FLATPAK_BRANCH="stable"
 PREPARE_ONLY=0
+
+resolve_release_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64)
+            printf 'x86_64\n'
+            ;;
+        aarch64|arm64)
+            printf 'arm64\n'
+            ;;
+        *)
+            uname -m
+            ;;
+    esac
+}
+
+RELEASE_ARCH="$(resolve_release_arch)"
+BUNDLE_PATH="$OUTPUT_DIR/CircuitSim-linux-$VERSION-$RELEASE_ARCH.flatpak"
 
 usage() {
     cat <<'EOF'

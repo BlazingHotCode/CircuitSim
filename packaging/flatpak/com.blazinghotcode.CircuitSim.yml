@@ -15,7 +15,10 @@ modules:
   - name: circuitsim
     buildsystem: simple
     build-commands:
+      - /usr/lib/sdk/openjdk21/bin/jlink --module-path /usr/lib/sdk/openjdk21/jmods --add-modules java.base,java.desktop,java.net.http --output runtime --strip-debug --no-man-pages --no-header-files --compress=2
       - install -Dm755 circuitsim.sh /app/bin/circuitsim
+      - mkdir -p /app/jre
+      - cp -a runtime/. /app/jre/
       - install -Dm644 CircuitSim.jar /app/lib/CircuitSim.jar
       - install -Dm644 com.blazinghotcode.CircuitSim.desktop /app/share/applications/com.blazinghotcode.CircuitSim.desktop
       - install -Dm644 com.blazinghotcode.CircuitSim.metainfo.xml /app/share/metainfo/com.blazinghotcode.CircuitSim.metainfo.xml

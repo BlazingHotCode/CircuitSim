@@ -140,8 +140,9 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - The visible app name stays `CircuitSim`.
 - The Linux package identifier uses the distro-friendly name `circuitsim`.
 - `./scripts/package-linux.sh` now defaults to the broadest Linux output set: app image + `.tar.gz` + `.deb` + `.rpm`.
-- The `.tar.gz` archive is the closest thing to an all-distro option because it just extracts and runs with the bundled runtime.
-- Flatpak support is included through `scripts/package-flatpak.sh`, which builds `com.blazinghotcode.CircuitSim` for distro-agnostic desktop installs.
+- Linux package filenames now include architecture-specific suffixes where needed so release assets clearly distinguish `x86_64` and `arm64` builds.
+- The `.tar.gz` archive is the closest thing to an all-distro option for a given CPU architecture because it just extracts and runs with the bundled runtime.
+- Flatpak support is included through `scripts/package-flatpak.sh`, which builds `com.blazinghotcode.CircuitSim` and bundles its own Java runtime inside the Flatpak.
 - Building `.deb` packages usually requires `fakeroot`, and `.rpm` packages require `rpm`/`rpmbuild`, to be available on the build machine.
 - Building the Flatpak bundle requires `flatpak`, `flatpak-builder`, and the `org.freedesktop` 24.08 runtime/sdk plus the `openjdk21` SDK extension.
 
@@ -157,7 +158,7 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - The workflow file is `/.github/workflows/package.yml`.
 - Uploaded artifacts include:
   - Windows: installer `.exe` plus portable app image
-  - Linux: `.deb`, `.rpm`, Flatpak `.flatpak`, portable `.tar.gz`, plus portable app image
+  - Linux: `x86_64` and `arm64` variants of `.deb`, `.rpm`, Flatpak `.flatpak`, portable `.tar.gz`, plus portable app image
 - Tagged releases use `/.github/workflows/release.yml` to publish a GitHub Release with Windows and Linux downloads attached.
 - The release body uses `release-notes/<version>.md` when present.
 - Use `release-notes/TEMPLATE.md` as the starting point for new release notes, including install/update snippets for Windows, `.deb`, `.rpm`, portable `.tar.gz`, and Flatpak users.

@@ -142,9 +142,21 @@ jobs:
           if-no-files-found: error
 
   linux:
-    name: Build Linux Release Assets
-    runs-on: ubuntu-latest
+    name: Build Linux Release Assets (${{ matrix.release_arch }})
+    runs-on: ${{ matrix.runner }}
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            release_arch: x86_64
+            deb_arch: amd64
+            rpm_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            release_arch: arm64
+            deb_arch: arm64
+            rpm_arch: aarch64
 
     steps:
       - name: Check out repository
@@ -171,15 +183,21 @@ jobs:
           ./scripts/package-linux.sh
           ./scripts/package-flatpak.sh
 
+      - name: Archive Linux app image
+        run: |
+          version='${{ needs.prepare.outputs.version }}'
+          tar -C build/package/linux -czf "build/package/linux/CircuitSim-linux-app-image-$version-${{ matrix.release_arch }}.tar.gz" CircuitSim
+
       - name: Upload Linux release assets
         uses: actions/upload-artifact@v4
         with:
-          name: release-linux
+          name: release-linux-${{ matrix.release_arch }}
           path: |
-            build/package/linux/circuitsim_*.deb
-            build/package/linux/circuitsim-*.rpm
-            build/package/linux/CircuitSim-linux-portable-*.tar.gz
-            build/package/flatpak/*.flatpak
+            build/package/linux/circuitsim_*_${{ matrix.deb_arch }}.deb
+            build/package/linux/circuitsim-*.${{ matrix.rpm_arch }}.rpm
+            build/package/linux/CircuitSim-linux-portable-*-${{ matrix.release_arch }}.tar.gz
+            build/package/linux/CircuitSim-linux-app-image-*-${{ matrix.release_arch }}.tar.gz
+            build/package/flatpak/CircuitSim-linux-*-${{ matrix.release_arch }}.flatpak
           if-no-files-found: error
 
   publish:
@@ -206,8 +224,9 @@ jobs:
       - name: Download Linux assets
         uses: actions/download-artifact@v4
         with:
-          name: release-linux
+          pattern: release-linux-*
           path: release-assets/linux
+          merge-multiple: true
 
       - name: Download jar asset
         uses: actions/download-artifact@v4

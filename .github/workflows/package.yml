@@ -61,8 +61,20 @@ jobs:
           if-no-files-found: error
 
   linux:
-    name: Linux Packages
-    runs-on: ubuntu-latest
+    name: Linux Packages (${{ matrix.release_arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            release_arch: x86_64
+            deb_arch: amd64
+            rpm_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            release_arch: arm64
+            deb_arch: arm64
+            rpm_arch: aarch64
 
     steps:
       - name: Check out repository
@@ -90,39 +102,39 @@ jobs:
       - name: Archive Linux app image
         run: |
           version="$(tr -d '\r\n' < ./build/version.txt)"
-          tar -C build/package/linux -czf "build/package/linux/CircuitSim-linux-app-image-$version.tar.gz" CircuitSim
+          tar -C build/package/linux -czf "build/package/linux/CircuitSim-linux-app-image-$version-${{ matrix.release_arch }}.tar.gz" CircuitSim
 
       - name: Upload Linux deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-Linux-DEB
-          path: build/package/linux/circuitsim_*.deb
+          name: CircuitSim-Linux-DEB-${{ matrix.release_arch }}
+          path: build/package/linux/circuitsim_*_${{ matrix.deb_arch }}.deb
           if-no-files-found: error
 
       - name: Upload Linux rpm artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-Linux-RPM
-          path: build/package/linux/circuitsim-*.rpm
+          name: CircuitSim-Linux-RPM-${{ matrix.release_arch }}
+          path: build/package/linux/circuitsim-*.${{ matrix.rpm_arch }}.rpm
           if-no-files-found: error
 
       - name: Upload Linux portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-Linux-Portable
-          path: build/package/linux/CircuitSim-linux-portable-*.tar.gz
+          name: CircuitSim-Linux-Portable-${{ matrix.release_arch }}
+          path: build/package/linux/CircuitSim-linux-portable-*-${{ matrix.release_arch }}.tar.gz
           if-no-files-found: error
 
       - name: Upload Linux app-image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-Linux-AppImage
-          path: build/package/linux/CircuitSim-linux-app-image-*.tar.gz
+          name: CircuitSim-Linux-AppImage-${{ matrix.release_arch }}
+          path: build/package/linux/CircuitSim-linux-app-image-*-${{ matrix.release_arch }}.tar.gz
           if-no-files-found: error
 
       - name: Upload Linux flatpak artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CircuitSim-Linux-Flatpak
-          path: build/package/flatpak/*.flatpak
+          name: CircuitSim-Linux-Flatpak-${{ matrix.release_arch }}
+          path: build/package/flatpak/CircuitSim-linux-*-${{ matrix.release_arch }}.flatpak
           if-no-files-found: error

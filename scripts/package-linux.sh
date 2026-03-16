@@ -31,6 +31,30 @@ require_cmd() {
     fi
 }
 
+resolve_arches() {
+    local machine_arch
+
+    machine_arch="$(uname -m)"
+
+    case "$machine_arch" in
+        x86_64|amd64)
+            RELEASE_ARCH="x86_64"
+            DEB_ARCH="amd64"
+            RPM_ARCH="x86_64"
+            ;;
+        aarch64|arm64)
+            RELEASE_ARCH="arm64"
+            DEB_ARCH="arm64"
+            RPM_ARCH="aarch64"
+            ;;
+        *)
+            RELEASE_ARCH="$machine_arch"
+            DEB_ARCH="$machine_arch"
+            RPM_ARCH="$machine_arch"
+            ;;
+    esac
+}
+
 resolve_java_tool() {
     local tool_name="$1"
     local candidate
@@ -115,6 +139,7 @@ require_cmd java
 require_cmd javac
 require_cmd jar
 require_cmd jdeps
+resolve_arches
 
 JAVAC_BIN="$(require_java_tool javac)"
 JAR_BIN="$(require_java_tool jar)"
@@ -137,9 +162,9 @@ mkdir -p "$INPUT_DIR" "$DEST_DIR"
 cp "$MAIN_JAR" "$INPUT_DIR/$APP_NAME.jar"
 
 APP_IMAGE_DIR="$DEST_DIR/$APP_NAME"
-DEB_PACKAGE="$DEST_DIR/${PACKAGE_NAME}_${VERSION}-1_amd64.deb"
-RPM_PACKAGE="$DEST_DIR/${PACKAGE_NAME}-${VERSION}-1.x86_64.rpm"
-PORTABLE_ARCHIVE="$DEST_DIR/${APP_NAME}-linux-portable-$VERSION.tar.gz"
+DEB_PACKAGE="$DEST_DIR/${PACKAGE_NAME}_${VERSION}-1_${DEB_ARCH}.deb"
+RPM_PACKAGE="$DEST_DIR/${PACKAGE_NAME}-${VERSION}-1.${RPM_ARCH}.rpm"
+PORTABLE_ARCHIVE="$DEST_DIR/${APP_NAME}-linux-portable-$VERSION-${RELEASE_ARCH}.tar.gz"
 
 rm -rf "$APP_IMAGE_DIR"
 rm -f "$DEB_PACKAGE"

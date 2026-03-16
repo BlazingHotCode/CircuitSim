@@ -4,6 +4,8 @@ Use `packaging/flatpak/com.blazinghotcode.CircuitSim.flathub.yml` for Flathub.
 
 It differs from the local bundle manifest because it downloads the versioned GitHub release jar instead of using a workspace-local file.
 
+Both manifests build a minimal Java runtime with `jlink` during the Flatpak build, so the resulting app does not depend on the OpenJDK SDK extension at launch time.
+
 ## Before submitting
 
 1. Build the versioned jar:
