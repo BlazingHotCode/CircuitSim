@@ -8,8 +8,6 @@ command: circuitsim
 finish-args:
   - --share=ipc
   - --socket=x11
-  - --device=dri
-  - --filesystem=home
 modules:
   - name: circuitsim
     buildsystem: simple
