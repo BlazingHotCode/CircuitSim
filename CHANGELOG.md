@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.8 - 2026-03-17
+
+### Changed
+- Linux GitHub Release assets now publish separate `x86_64` and `arm64` package variants.
+- Flatpak builds now bundle a minimal Java runtime and use a more reliable Linux display launcher path.
+- Short-circuit warnings are positioned away from the wire color palette.
+
 ## 1.1.5 - 2026-03-15
 
 ### Added
