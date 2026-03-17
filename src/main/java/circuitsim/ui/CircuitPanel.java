@@ -2233,6 +2233,8 @@ public class CircuitPanel extends JPanel {
         int padding = 12;
         int popupWidth = shortCircuitPopup.getPreferredSize().width;
         int popupHeight = shortCircuitPopup.getPreferredSize().height;
-        shortCircuitPopup.setBounds(padding, getHeight() - popupHeight - padding, popupWidth, popupHeight);
+        int popupX = Math.max(padding, (getWidth() - popupWidth) / 2);
+        int popupY = getHeight() - popupHeight - padding;
+        shortCircuitPopup.setBounds(popupX, popupY, popupWidth, popupHeight);
     }
 }
