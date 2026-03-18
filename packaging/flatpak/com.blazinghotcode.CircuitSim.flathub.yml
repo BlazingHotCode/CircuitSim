@@ -1,6 +1,6 @@
 app-id: com.blazinghotcode.CircuitSim
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.openjdk21
@@ -25,8 +25,10 @@ modules:
         url: https://github.com/BlazingHotCode/CircuitSim/releases/download/v1.1.8/CircuitSim-1.1.8.jar
         sha256: 51dc5f6915e76916d61ddd1c642370cf1d549a3065ae9e75140495bb07f66215
         dest-filename: CircuitSim.jar
-      - type: file
-        path: ./circuitsim.sh
+      - type: script
+        dest-filename: circuitsim.sh
+        commands:
+          - exec /app/jre/bin/java -Dfile.encoding=UTF-8 -Djava.awt.headless=false -jar /app/lib/CircuitSim.jar "$@"
       - type: file
         path: ./com.blazinghotcode.CircuitSim.desktop
       - type: file

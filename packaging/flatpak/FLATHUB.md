@@ -22,13 +22,9 @@ Both manifests build a minimal Java runtime with `jlink` during the Flatpak buil
 
 3. Make sure the matching GitHub Release includes `CircuitSim-<version>.jar`.
 
-4. Copy these files into your `flathub/flathub` submission branch under `com.blazinghotcode.CircuitSim/`:
+4. Copy `packaging/flatpak/com.blazinghotcode.CircuitSim.flathub.yml` into your `flathub/flathub` submission branch root and rename it to `com.blazinghotcode.CircuitSim.yml` there.
 
-- `packaging/flatpak/com.blazinghotcode.CircuitSim.flathub.yml` (rename to `com.blazinghotcode.CircuitSim.yml` there)
-- `packaging/flatpak/com.blazinghotcode.CircuitSim.desktop`
-- `packaging/flatpak/com.blazinghotcode.CircuitSim.metainfo.xml`
-- `packaging/flatpak/circuitsim.sh`
-- `packaging/circuitsim.png`
+The Flathub manifest now fetches the desktop file, metainfo, and icon from the upstream `CircuitSim` repository and uses a manifest `type: script` source for the launcher, so no extra packaging files need to be copied into the submission repo.
 
 ## Local validation
 
