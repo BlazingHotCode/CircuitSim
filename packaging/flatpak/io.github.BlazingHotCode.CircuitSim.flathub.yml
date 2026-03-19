@@ -35,4 +35,8 @@ modules:
       - type: script
         dest-filename: circuitsim.sh
         commands:
+          - set -euo pipefail
+          - if [ -n "${DISPLAY:-}" ]; then display_num="${DISPLAY#*:}"; display_num="${display_num%%.*}"; if [ -n "$display_num" ] && [ -S "/tmp/.X11-unix/X$display_num" ]; then DISPLAY=":$display_num"; export DISPLAY; else unset DISPLAY; fi; fi
+          - if [ -z "${DISPLAY:-}" ]; then for x_socket in /tmp/.X11-unix/X*; do [ -S "$x_socket" ] || continue; DISPLAY=":${x_socket##*X}"; export DISPLAY; break; done; fi
+          - if [ -z "${DISPLAY:-}" ]; then printf 'CircuitSim requires X11 or XWayland inside Flatpak, but no DISPLAY was available.\n' >&2; exit 1; fi
           - exec /app/jre/bin/java -Dfile.encoding=UTF-8 -Djava.awt.headless=false -jar /app/lib/CircuitSim.jar "$@"
