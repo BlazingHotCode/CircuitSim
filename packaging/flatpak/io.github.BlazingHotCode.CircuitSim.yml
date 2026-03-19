@@ -1,4 +1,4 @@
-app-id: com.blazinghotcode.CircuitSim
+app-id: io.github.BlazingHotCode.CircuitSim
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
@@ -17,18 +17,18 @@ modules:
       - mkdir -p /app/jre
       - cp -a runtime/. /app/jre/
       - install -Dm644 CircuitSim.jar /app/lib/CircuitSim.jar
-      - install -Dm644 com.blazinghotcode.CircuitSim.desktop /app/share/applications/com.blazinghotcode.CircuitSim.desktop
-      - install -Dm644 com.blazinghotcode.CircuitSim.metainfo.xml /app/share/metainfo/com.blazinghotcode.CircuitSim.metainfo.xml
-      - install -Dm644 com.blazinghotcode.CircuitSim.png /app/share/icons/hicolor/256x256/apps/com.blazinghotcode.CircuitSim.png
+      - install -Dm644 io.github.BlazingHotCode.CircuitSim.desktop /app/share/applications/io.github.BlazingHotCode.CircuitSim.desktop
+      - install -Dm644 io.github.BlazingHotCode.CircuitSim.metainfo.xml /app/share/metainfo/io.github.BlazingHotCode.CircuitSim.metainfo.xml
+      - install -Dm644 io.github.BlazingHotCode.CircuitSim.png /app/share/icons/hicolor/256x256/apps/io.github.BlazingHotCode.CircuitSim.png
     sources:
       - type: file
         path: ../../build/package-input/flatpak/CircuitSim.jar
       - type: file
         path: ./circuitsim.sh
       - type: file
-        path: ./com.blazinghotcode.CircuitSim.desktop
+        path: ./io.github.BlazingHotCode.CircuitSim.desktop
       - type: file
-        path: ./com.blazinghotcode.CircuitSim.metainfo.xml
+        path: ./io.github.BlazingHotCode.CircuitSim.metainfo.xml
       - type: file
         path: ../circuitsim.png
-        dest-filename: com.blazinghotcode.CircuitSim.png
+        dest-filename: io.github.BlazingHotCode.CircuitSim.png

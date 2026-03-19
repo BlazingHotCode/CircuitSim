@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION="$(tr -d '\r\n' < "$ROOT_DIR/build/version.txt")"
-MANIFEST_PATH="$ROOT_DIR/packaging/flatpak/com.blazinghotcode.CircuitSim.flathub.yml"
+MANIFEST_PATH="$ROOT_DIR/packaging/flatpak/io.github.BlazingHotCode.CircuitSim.flathub.yml"
 JAR_PATH="$ROOT_DIR/dist/CircuitSim-$VERSION.jar"
 RELEASE_URL="https://github.com/BlazingHotCode/CircuitSim/releases/download/v$VERSION/CircuitSim-$VERSION.jar"
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.blazinghotcode.CircuitSim</id>
+  <id>io.github.BlazingHotCode.CircuitSim</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
   <name>CircuitSim</name>
@@ -11,7 +11,7 @@
       simulation update live with analog voltages, currents, and basic digital logic.
     </p>
   </description>
-  <launchable type="desktop-id">com.blazinghotcode.CircuitSim.desktop</launchable>
+  <launchable type="desktop-id">io.github.BlazingHotCode.CircuitSim.desktop</launchable>
   <categories>
     <category>Education</category>
     <category>Science</category>

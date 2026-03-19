@@ -142,7 +142,7 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - `./scripts/package-linux.sh` now defaults to the broadest Linux output set: app image + `.tar.gz` + `.deb` + `.rpm`.
 - Linux package filenames now include architecture-specific suffixes where needed so release assets clearly distinguish `x86_64` and `arm64` builds.
 - The `.tar.gz` archive is the closest thing to an all-distro option for a given CPU architecture because it just extracts and runs with the bundled runtime.
-- Flatpak support is included through `scripts/package-flatpak.sh`, which builds `com.blazinghotcode.CircuitSim` and bundles its own Java runtime inside the Flatpak.
+- Flatpak support is included through `scripts/package-flatpak.sh`, which builds `io.github.BlazingHotCode.CircuitSim` and bundles its own Java runtime inside the Flatpak.
 - Building `.deb` packages usually requires `fakeroot`, and `.rpm` packages require `rpm`/`rpmbuild`, to be available on the build machine.
 - Building the Flatpak bundle requires `flatpak`, `flatpak-builder`, and the `org.freedesktop` 24.08 runtime/sdk plus the `openjdk21` SDK extension.
 
@@ -162,7 +162,7 @@ If you only want to verify the jar build on a machine without `jpackage` install
 - Tagged releases use `/.github/workflows/release.yml` to publish a GitHub Release with Windows and Linux downloads attached.
 - The release body uses `release-notes/<version>.md` when present.
 - Use `release-notes/TEMPLATE.md` as the starting point for new release notes, including install/update snippets for Windows, `.deb`, `.rpm`, portable `.tar.gz`, and Flatpak users.
-- `packaging/flatpak/com.blazinghotcode.CircuitSim.flathub.yml` is the Flathub-ready manifest; it expects a matching `CircuitSim-<version>.jar` asset on the GitHub Release.
+- `packaging/flatpak/io.github.BlazingHotCode.CircuitSim.flathub.yml` is the Flathub-ready manifest; it expects a matching `CircuitSim-<version>.jar` asset on the GitHub Release.
 - After running `./scripts/build-jar.sh`, use `./scripts/update-flathub-manifest.sh` to refresh the Flathub manifest URL and checksum for the current version.
 - See `packaging/flatpak/FLATHUB.md` for the exact files and validation commands to use in your Flathub submission PR.
 - To publish a release, update `build/version.txt`, commit the release changes, then push a matching tag such as `v1.1.3`.

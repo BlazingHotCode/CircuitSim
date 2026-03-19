@@ -35,7 +35,7 @@ Date: YYYY-MM-DD
   ```
 - Linux Flatpak update:
   ```sh
-  flatpak update com.blazinghotcode.CircuitSim
+  flatpak update io.github.BlazingHotCode.CircuitSim
   ```
 
 ## Notes

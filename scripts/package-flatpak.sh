@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_ID="com.blazinghotcode.CircuitSim"
+APP_ID="io.github.BlazingHotCode.CircuitSim"
 VERSION="$(tr -d '\r\n' < "$ROOT_DIR/build/version.txt")"
 MANIFEST="$ROOT_DIR/packaging/flatpak/$APP_ID.yml"
 STAGING_DIR="$ROOT_DIR/build/package-input/flatpak"
