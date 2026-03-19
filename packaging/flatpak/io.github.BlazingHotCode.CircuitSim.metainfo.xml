@@ -12,12 +12,33 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.BlazingHotCode.CircuitSim.desktop</launchable>
+  <provides>
+    <id>com.blazinghotcode.CircuitSim</id>
+  </provides>
+  <replaces>
+    <id>com.blazinghotcode.CircuitSim</id>
+  </replaces>
   <categories>
     <category>Education</category>
     <category>Science</category>
   </categories>
-  <developer id="com.blazinghotcode">
+  <developer id="io.github.BlazingHotCode">
     <name>BlazingHotCode</name>
   </developer>
   <content_rating type="oars-1.1" />
+  <url type="homepage">https://github.com/BlazingHotCode/CircuitSim</url>
+  <url type="vcs-browser">https://github.com/BlazingHotCode/CircuitSim</url>
+  <releases>
+    <release version="1.1.8" date="2026-03-17">
+      <url type="details">https://github.com/BlazingHotCode/CircuitSim/releases/tag/v1.1.8</url>
+      <description>
+        <p>Improves Linux packaging and Flatpak support.</p>
+        <ul>
+          <li>Builds Linux release artifacts for both x86_64 and arm64.</li>
+          <li>Bundles a Java runtime inside the Flatpak and updates the launcher.</li>
+          <li>Moves the short-circuit warning away from the wire color menu.</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
 </component>
