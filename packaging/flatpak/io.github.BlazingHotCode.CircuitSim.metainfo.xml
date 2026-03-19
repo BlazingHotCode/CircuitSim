@@ -22,6 +22,12 @@
     <category>Education</category>
     <category>Science</category>
   </categories>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main CircuitSim workspace</caption>
+      <image>https://blazinghotcode.github.io/circuitsim-1.1.8.png</image>
+    </screenshot>
+  </screenshots>
   <developer id="io.github.BlazingHotCode">
     <name>BlazingHotCode</name>
   </developer>
