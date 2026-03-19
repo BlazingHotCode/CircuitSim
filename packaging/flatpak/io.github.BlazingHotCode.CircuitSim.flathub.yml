@@ -30,8 +30,8 @@ modules:
       - install -Dm644 LICENSE /app/share/licenses/io.github.BlazingHotCode.CircuitSim/circuitsim/LICENSE
     sources:
       - type: archive
-        url: https://github.com/BlazingHotCode/CircuitSim/archive/8200ba0ce8d667008ab1b8c97a17e4a39bb6407d.tar.gz
-        sha256: 574c44c68598a6d9d55f40cdf7a2c2a33ddb56c0391789fa01b66908b06f29af
+        url: https://github.com/BlazingHotCode/CircuitSim/archive/c69eefefd9b646623aef18daa612e4da39f7b8bb.tar.gz
+        sha256: 2638640e59e15c0e928d3baf3bcc44b7275977880a03aff06ce06634e58685de
       - type: script
         dest-filename: circuitsim.sh
         commands:
