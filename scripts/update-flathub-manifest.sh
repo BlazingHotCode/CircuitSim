@@ -5,15 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION="$(tr -d '\r\n' < "$ROOT_DIR/build/version.txt")"
 MANIFEST_PATH="$ROOT_DIR/packaging/flatpak/io.github.BlazingHotCode.CircuitSim.flathub.yml"
-JAR_PATH="$ROOT_DIR/dist/CircuitSim-$VERSION.jar"
-RELEASE_URL="https://github.com/BlazingHotCode/CircuitSim/releases/download/v$VERSION/CircuitSim-$VERSION.jar"
 
 usage() {
     cat <<'EOF'
 Usage: scripts/update-flathub-manifest.sh
 
 Updates the Flathub-ready Flatpak manifest to the current build/version.txt
-using the locally built versioned jar checksum and GitHub release jar URL.
+using the GitHub source archive URL and checksum for the currently checked out commit.
 EOF
 }
 
@@ -27,16 +25,28 @@ if [[ ! -f "$MANIFEST_PATH" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$JAR_PATH" ]]; then
-    printf 'Missing versioned jar: %s\n' "$JAR_PATH" >&2
-    printf 'Run ./scripts/build-jar.sh first.\n' >&2
+if ! command -v git >/dev/null 2>&1; then
+    printf 'Missing required command: git\n' >&2
     exit 1
 fi
 
-SHA256="$(sha256sum "$JAR_PATH" | cut -d' ' -f1)"
+if ! command -v curl >/dev/null 2>&1; then
+    printf 'Missing required command: curl\n' >&2
+    exit 1
+fi
+
+if ! command -v sha256sum >/dev/null 2>&1; then
+    printf 'Missing required command: sha256sum\n' >&2
+    exit 1
+fi
+
+COMMIT_HASH="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+SOURCE_URL="https://github.com/BlazingHotCode/CircuitSim/archive/$COMMIT_HASH.tar.gz"
+
+SHA256="$(curl -L "$SOURCE_URL" | sha256sum | cut -d' ' -f1)"
 
 TMP_FILE="$(mktemp)"
-awk -v url="$RELEASE_URL" -v sha="$SHA256" '
+awk -v url="$SOURCE_URL" -v sha="$SHA256" '
     BEGIN {
         url_updated = 0
         sha_updated = 0
