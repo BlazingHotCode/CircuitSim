@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   prepare:
@@ -178,7 +179,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fakeroot rpm flatpak flatpak-builder
           sudo flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install --system -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.freedesktop.Sdk.Extension.openjdk21//24.08
+          sudo flatpak install --system -y flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08 org.freedesktop.Sdk.Extension.openjdk21//25.08
 
       - name: Build Linux packages
         run: |
@@ -248,3 +249,87 @@ jobs:
             release-assets/linux/**/*
             release-assets/jar/**/*
           fail_on_unmatched_files: true
+
+  update-flathub:
+    name: Update Flathub Repo
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - publish
+    if: ${{ secrets.FLATHUB_REPO_TOKEN != '' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Refresh Flathub manifest for release tag
+        run: |
+          chmod +x ./scripts/update-flathub-manifest.sh
+          ./scripts/update-flathub-manifest.sh --tag "${{ needs.prepare.outputs.tag }}"
+
+      - name: Clone official Flathub repository
+        env:
+          FLATHUB_REPO_TOKEN: ${{ secrets.FLATHUB_REPO_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${FLATHUB_REPO_TOKEN}@github.com/flathub/io.github.BlazingHotCode.CircuitSim.git" flathub-repo
+
+      - name: Create or update Flathub release branch
+        id: flathub-pr
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_REPO_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          BRANCH_NAME="sync-release-${RELEASE_TAG}"
+          cp packaging/flatpak/io.github.BlazingHotCode.CircuitSim.flathub.yml flathub-repo/io.github.BlazingHotCode.CircuitSim.yml
+
+          git -C flathub-repo checkout -B "$BRANCH_NAME"
+          git -C flathub-repo config user.name "github-actions[bot]"
+          git -C flathub-repo config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C flathub-repo add io.github.BlazingHotCode.CircuitSim.yml
+
+          if git -C flathub-repo diff --cached --quiet; then
+            printf 'No Flathub manifest changes for %s\n' "$RELEASE_TAG"
+            printf 'created=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git -C flathub-repo commit -m "Update CircuitSim to ${RELEASE_VERSION}"
+          git -C flathub-repo push --force-with-lease -u origin "$BRANCH_NAME"
+
+          PR_URL="$(gh pr list \
+            --repo flathub/io.github.BlazingHotCode.CircuitSim \
+            --head "$BRANCH_NAME" \
+            --json url \
+            --jq '.[0].url')"
+
+          if [[ -z "$PR_URL" ]]; then
+            printf '%s\n' \
+              '## Summary' \
+              "- update the Flathub manifest to CircuitSim ${RELEASE_VERSION}" \
+              "- pin the source archive to the tagged release ${RELEASE_TAG}" \
+              '' \
+              '## Testing' \
+              "- automated release sync from \\`${RELEASE_TAG}\\`" \
+              > flathub-pr-body.md
+            PR_URL="$(gh pr create \
+              --repo flathub/io.github.BlazingHotCode.CircuitSim \
+              --base master \
+              --head "$BRANCH_NAME" \
+              --title "Update CircuitSim to ${RELEASE_VERSION}" \
+              --body-file flathub-pr-body.md)"
+          fi
+
+          printf 'created=true\n' >> "$GITHUB_OUTPUT"
+          printf 'pr_url=%s\n' "$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge on Flathub PR
+        if: ${{ steps.flathub-pr.outputs.created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_REPO_TOKEN }}
+        run: |
+          gh pr merge --repo flathub/io.github.BlazingHotCode.CircuitSim --auto --squash "${{ steps.flathub-pr.outputs.pr_url }}"
