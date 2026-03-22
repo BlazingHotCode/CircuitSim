@@ -4,7 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
   <name>CircuitSim</name>
-  <summary>Interactive, real-time circuit simulator</summary>
+  <summary>Design and simulate circuits</summary>
   <description>
     <p>
       Design circuits on a grid, connect components with wires, and watch the
@@ -22,6 +22,10 @@
     <category>Education</category>
     <category>Science</category>
   </categories>
+  <branding>
+    <color type="primary" scheme_preference="light">#f08d7a</color>
+    <color type="primary" scheme_preference="dark">#7a2d21</color>
+  </branding>
   <screenshots>
     <screenshot type="default">
       <caption>Main CircuitSim workspace</caption>
