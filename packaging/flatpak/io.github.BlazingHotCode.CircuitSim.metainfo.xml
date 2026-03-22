@@ -23,8 +23,8 @@
     <category>Science</category>
   </categories>
   <branding>
-    <color type="primary" scheme_preference="light">#f08d7a</color>
-    <color type="primary" scheme_preference="dark">#7a2d21</color>
+    <color type="primary" scheme_preference="light">#2b9d95</color>
+    <color type="primary" scheme_preference="dark">#14504e</color>
   </branding>
   <screenshots>
     <screenshot type="default">
